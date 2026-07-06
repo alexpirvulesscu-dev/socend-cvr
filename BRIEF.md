@@ -21,8 +21,8 @@ Single-page React app → Supabase (Postgres + Auth + RLS). Shared skeleton tabl
 ### Phase 0: Setup
 - [x] `git init`, create branch `feature/cvr-v1`, add `.gitignore` (node_modules, .env.local, /qa) · `6a42e84`
 - [x] Scaffold Vite + React + TS + Tailwind; app boots on the port claimed in the parent `CLAUDE.md` port registry (acceptance: `npm run dev` serves a page) · `1e68186`
-- [ ] Via Supabase MCP: `get_project_url` + `get_publishable_keys` for ref `rvqsjxgybqbphrnhhyfz`, write `.env.local`, create `src/lib/supabase.ts` (acceptance: a test query connects)
-- [ ] Register claude_design MCP if missing, import the design project, save `Socend CVR App.dc.html` reference into `/design`, extract tokens to `src/design/tokens.ts` (acceptance: tokens file matches the palette in `.claude/CLAUDE.md`)
+- [x] Via Supabase MCP: `get_project_url` + `get_publishable_keys` for ref `rvqsjxgybqbphrnhhyfz`, write `.env.local`, create `src/lib/supabase.ts` (acceptance: a test query connects) · `753cfa8`
+- [x] Register claude_design MCP if missing, import the design project, save `Socend CVR App.dc.html` reference into `/design`, extract tokens to `src/design/tokens.ts` (acceptance: tokens file matches the palette in `.claude/CLAUDE.md`) · `3f28d66` — tokens done din paleta CLAUDE.md; importul fișierului .dc.html rămâne BLOCAT pe `/design-login` (hard stop #3, cerut o dată; vezi design/README.md)
 
 ### Phase 1: Database
 - [ ] Read-only inspection of existing schema; write findings to `DECISIONS.md` (acceptance: list of existing tables recorded, nothing modified)
