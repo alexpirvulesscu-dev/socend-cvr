@@ -103,7 +103,8 @@ export interface ProjectRow {
   start_date: string | null
   end_date: string | null
   jobs: JobRow[]
-  cvr_billing: BillingRow[]
+  // PostgREST întoarce OBIECT (nu array) pentru relații 1:1 (unique pe project_id)
+  cvr_billing: BillingRow | BillingRow[] | null
 }
 
 // ── Arborele îmbogățit cu KPI-uri ────────────────────────────────────────
@@ -171,7 +172,8 @@ function decorateProject(p: ProjectRow, today: string): ProjectWithKpis {
       budgetByCategory: sumByCategory(j.cvr_job_budgets),
       costByCategory: sumByCategory(j.cvr_cost_entries),
     }))
-  const billing = p.cvr_billing[0] ?? EMPTY_BILLING
+  const billing =
+    (Array.isArray(p.cvr_billing) ? p.cvr_billing[0] : p.cvr_billing) ?? EMPTY_BILLING
   const billingInput: BillingInput = {
     depus: Number(billing.depus),
     certificat: Number(billing.certificat),

@@ -1,44 +1,87 @@
 import { useEffect, useState } from 'react'
 import { useProjectTree } from './data/projects'
 import { ensureDevSession } from './lib/devAuth'
-import { lei, pct } from './lib/format'
+import { ProiecteView } from './views/Proiecte'
+import { ProiectView } from './views/Proiect'
+import { JobView } from './views/Job'
 
-// Listă minimă de proiecte (faza 2.3) — faza 3 o aduce 1:1 la design.
-function ProjectList() {
-  const { projects, loading, error } = useProjectTree()
+// Navigare prin stare (fără router), ca în celelalte aplicații Socend.
+type Route =
+  | { view: 'proiecte' }
+  | { view: 'proiect'; projectId: string }
+  | { view: 'job'; projectId: string; jobId: string }
 
-  if (loading) return <p className="p-8 text-[#5B6673]">Se încarcă proiectele…</p>
-  if (error) return <p className="p-8 text-[#D64545]">Eroare: {error}</p>
-
+function TopBar() {
   return (
-    <div className="mx-auto max-w-3xl p-6 space-y-4">
-      <h1 className="text-2xl font-semibold">Proiecte</h1>
-      {projects.map((p) => (
-        <div key={p.id} className="rounded-[20px] bg-white p-6 shadow-[0_1px_2px_rgba(13,26,45,0.04),0_8px_24px_rgba(13,26,45,0.06)]">
-          <div className="flex items-baseline justify-between">
-            <h2 className="text-lg font-semibold">{p.name}</h2>
-            <span className="text-sm text-[#5B6673]">{p.client}</span>
-          </div>
-          <p className="mt-1 text-sm text-[#5B6673]">Contract: {lei(p.contract_value)}</p>
-          <p className="mt-2 text-sm">
-            Lucrări executate: <strong>{lei(Math.round(p.kpis.ev))}</strong> ·{' '}
-            {pct(p.kpis.donePct)} din contract · marjă {pct(p.kpis.margin)}
-          </p>
-        </div>
-      ))}
-    </div>
+    <header className="sticky top-0 z-10 border-b border-[#E8E8E8]/60 bg-[rgba(250,249,246,0.8)] backdrop-blur-xl">
+      <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3">
+        <span className="font-semibold tracking-tight">Socend CVR</span>
+        <span className="text-xs text-[#5B6673]">birou</span>
+      </div>
+    </header>
   )
 }
 
 function App() {
   const [ready, setReady] = useState(false)
+  const [route, setRoute] = useState<Route>({ view: 'proiecte' })
+  const { projects, loading, error, refetch } = useProjectTree()
 
   useEffect(() => {
-    ensureDevSession().finally(() => setReady(true))
-  }, [])
+    ensureDevSession().then(() => {
+      setReady(true)
+      refetch()
+    })
+  }, [refetch])
 
-  if (!ready) return null
-  return <ProjectList />
+  if (!ready || loading) {
+    return (
+      <>
+        <TopBar />
+        <p className="p-8 text-center text-sm text-[#5B6673]">Se încarcă…</p>
+      </>
+    )
+  }
+  if (error) {
+    return (
+      <>
+        <TopBar />
+        <p className="p-8 text-center text-sm text-[#D64545]">Eroare: {error}</p>
+      </>
+    )
+  }
+
+  const project =
+    route.view !== 'proiecte' ? projects.find((p) => p.id === route.projectId) : undefined
+  const job =
+    route.view === 'job' && project ? project.jobs.find((j) => j.id === route.jobId) : undefined
+
+  return (
+    <>
+      <TopBar />
+      {route.view === 'proiecte' && (
+        <ProiecteView
+          projects={projects}
+          onOpen={(projectId) => setRoute({ view: 'proiect', projectId })}
+        />
+      )}
+      {route.view === 'proiect' && project && (
+        <ProiectView
+          project={project}
+          onBack={() => setRoute({ view: 'proiecte' })}
+          onOpenJob={(jobId) => setRoute({ view: 'job', projectId: project.id, jobId })}
+        />
+      )}
+      {route.view === 'job' && project && job && (
+        <JobView
+          job={job}
+          projectName={project.name}
+          onBack={() => setRoute({ view: 'proiect', projectId: project.id })}
+          onChanged={refetch}
+        />
+      )}
+    </>
+  )
 }
 
 export default App
