@@ -19,8 +19,8 @@ Single-page React app → Supabase (Postgres + Auth + RLS). Shared skeleton tabl
 ## Build Phases
 
 ### Phase 0: Setup
-- [ ] `git init`, create branch `feature/cvr-v1`, add `.gitignore` (node_modules, .env.local, /qa)
-- [ ] Scaffold Vite + React + TS + Tailwind; app boots on the port claimed in the parent `CLAUDE.md` port registry (acceptance: `npm run dev` serves a page)
+- [x] `git init`, create branch `feature/cvr-v1`, add `.gitignore` (node_modules, .env.local, /qa) · `6a42e84`
+- [x] Scaffold Vite + React + TS + Tailwind; app boots on the port claimed in the parent `CLAUDE.md` port registry (acceptance: `npm run dev` serves a page) · `1e68186`
 - [ ] Via Supabase MCP: `get_project_url` + `get_publishable_keys` for ref `rvqsjxgybqbphrnhhyfz`, write `.env.local`, create `src/lib/supabase.ts` (acceptance: a test query connects)
 - [ ] Register claude_design MCP if missing, import the design project, save `Socend CVR App.dc.html` reference into `/design`, extract tokens to `src/design/tokens.ts` (acceptance: tokens file matches the palette in `.claude/CLAUDE.md`)
 
