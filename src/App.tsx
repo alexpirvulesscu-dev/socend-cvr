@@ -5,6 +5,7 @@ import { ProiecteView } from './views/Proiecte'
 import { ProiectView } from './views/Proiect'
 import { JobView } from './views/Job'
 import { SantierView } from './views/Santier'
+import { ConfigurareView } from './views/Configurare'
 
 // Navigare prin stare (fără router), ca în celelalte aplicații Socend.
 type Route =
@@ -12,6 +13,7 @@ type Route =
   | { view: 'proiect'; projectId: string }
   | { view: 'job'; projectId: string; jobId: string }
   | { view: 'santier' }
+  | { view: 'config' }
 
 function TopBar({
   section,
@@ -87,10 +89,20 @@ function App() {
     <>
       <TopBar section={section} onSection={onSection} />
       {route.view === 'santier' && <SantierView onDataChanged={refetch} />}
+      {route.view === 'config' && (
+        <ConfigurareView
+          onDone={() => {
+            refetch()
+            setRoute({ view: 'proiecte' })
+          }}
+          onCancel={() => setRoute({ view: 'proiecte' })}
+        />
+      )}
       {route.view === 'proiecte' && (
         <ProiecteView
           projects={projects}
           onOpen={(projectId) => setRoute({ view: 'proiect', projectId })}
+          onNew={() => setRoute({ view: 'config' })}
         />
       )}
       {route.view === 'proiect' && project && (

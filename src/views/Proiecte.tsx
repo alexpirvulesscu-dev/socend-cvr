@@ -8,13 +8,23 @@ import { Card, KpiPill, ProgressBar, scheduleText } from '../components/ui'
 export function ProiecteView({
   projects,
   onOpen,
+  onNew,
 }: {
   projects: ProjectWithKpis[]
   onOpen: (projectId: string) => void
+  onNew: () => void
 }) {
   return (
     <div className="mx-auto max-w-3xl space-y-4 px-4 py-6">
-      <h1 className="text-2xl font-semibold">Proiecte</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">Proiecte</h1>
+        <button
+          onClick={onNew}
+          className="rounded-full bg-[#58A834] px-4 py-2 text-sm font-medium text-white hover:bg-[#46862A]"
+        >
+          + Proiect nou
+        </button>
+      </div>
 
       {projects.map((p) => {
         const k = p.kpis
