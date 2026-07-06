@@ -46,7 +46,7 @@ Single-page React app → Supabase (Postgres + Auth + RLS). Shared skeleton tabl
 - [x] Report screen "Ce s-a construit azi": one row per livrabil with 52px steppers, "Salvează ziua" writes `cvr_daily_entries` and increments `done` in one transaction, flips neinceput → in_lucru when quantities > 0, success box "Zi închisă ✓" (acceptance: saving updates Proiecte KPIs — verificat: EV 452.584→453.256 live; flip-ul de status verificat prin SQL; datele demo restaurate după test, screenshot `/qa/05-*.png`) · `b4dd7ff` + `d1296ea`
 
 ### Phase 5: Configurare proiect
-- [ ] 4-step wizard (Informații proiect, Joburi + buget pe 5 categorii, Taskuri, Livrabile with UM/cantitate/pondere), live check "Ponderile dintr-un task trebuie să însumeze 100%", summary sidebar "Valoare totală contract" (acceptance: a full new project can be created and appears in Proiecte, screenshot `/qa/06-*.png`)
+- [x] 4-step wizard (Informații proiect, Joburi + buget pe 5 categorii, Taskuri, Livrabile with UM/cantitate/pondere), live check "Ponderile dintr-un task trebuie să însumeze 100%", summary sidebar "Valoare totală contract" (acceptance: a full new project can be created and appears in Proiecte — verificat cap-coadă cu un proiect de test „Hală Logistică Chitila" 395.000 lei, apărut în listă, apoi șters ca datele demo să rămână cele din BRIEF, screenshot `/qa/06-*.png`) · `e9bba53`
 
 ### Phase 6: Auth and roles
 - [ ] Supabase email login, role from user metadata, route guards: `site` sees only Șantier, `finance` and `admin` see everything (acceptance: automated check that a site-role session cannot fetch cost rows)

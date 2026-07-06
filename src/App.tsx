@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useProjectTree } from './data/projects'
-import { ensureDevSession } from './lib/devAuth'
+import { useAuth, signOut, type Role } from './lib/auth'
 import { ProiecteView } from './views/Proiecte'
 import { ProiectView } from './views/Proiect'
 import { JobView } from './views/Job'
 import { SantierView } from './views/Santier'
 import { ConfigurareView } from './views/Configurare'
+import { LoginView } from './views/Login'
 
 // Navigare prin stare (fără router), ca în celelalte aplicații Socend.
 type Route =
@@ -18,9 +19,13 @@ type Route =
 function TopBar({
   section,
   onSection,
+  role,
+  email,
 }: {
   section: 'birou' | 'santier'
   onSection: (s: 'birou' | 'santier') => void
+  role: Role
+  email: string
 }) {
   const tab = (active: boolean) =>
     `rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
@@ -30,30 +35,35 @@ function TopBar({
     <header className="sticky top-0 z-10 border-b border-[#E8E8E8]/60 bg-[rgba(250,249,246,0.8)] backdrop-blur-xl">
       <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-2.5">
         <span className="font-semibold tracking-tight">Socend CVR</span>
-        <nav className="flex gap-1">
-          <button className={tab(section === 'birou')} onClick={() => onSection('birou')}>
-            Proiecte
+        <div className="flex items-center gap-2">
+          {/* rolul site vede DOAR Șantier — fără taburi de birou */}
+          {role !== 'site' && (
+            <nav className="flex gap-1">
+              <button className={tab(section === 'birou')} onClick={() => onSection('birou')}>
+                Proiecte
+              </button>
+              <button className={tab(section === 'santier')} onClick={() => onSection('santier')}>
+                Șantier
+              </button>
+            </nav>
+          )}
+          <button
+            onClick={() => void signOut()}
+            title={email}
+            className="rounded-full px-3 py-1.5 text-sm font-medium text-[#5B6673] hover:text-[#0D1A2D]"
+          >
+            Ieși
           </button>
-          <button className={tab(section === 'santier')} onClick={() => onSection('santier')}>
-            Șantier
-          </button>
-        </nav>
+        </div>
       </div>
     </header>
   )
 }
 
-function App() {
-  const [ready, setReady] = useState(false)
+/** Aplicația de birou (admin, finance): proiecte + șantier + configurare. */
+function OfficeApp({ role, email }: { role: Role; email: string }) {
   const [route, setRoute] = useState<Route>({ view: 'proiecte' })
   const { projects, loading, error, refetch } = useProjectTree()
-
-  useEffect(() => {
-    ensureDevSession().then(() => {
-      setReady(true)
-      refetch()
-    })
-  }, [refetch])
 
   const section = route.view === 'santier' ? 'santier' : 'birou'
   const onSection = (s: 'birou' | 'santier') =>
@@ -61,10 +71,10 @@ function App() {
 
   // Ecranul global de încărcare apare DOAR la prima citire; refetch-urile de
   // fundal (ex. după închiderea zilei) nu demontează ecranul curent.
-  if (!ready || (loading && projects.length === 0)) {
+  if (loading && projects.length === 0) {
     return (
       <>
-        <TopBar section={section} onSection={onSection} />
+        <TopBar section={section} onSection={onSection} role={role} email={email} />
         <p className="p-8 text-center text-sm text-[#5B6673]">Se încarcă…</p>
       </>
     )
@@ -72,7 +82,7 @@ function App() {
   if (error) {
     return (
       <>
-        <TopBar section={section} onSection={onSection} />
+        <TopBar section={section} onSection={onSection} role={role} email={email} />
         <p className="p-8 text-center text-sm text-[#D64545]">Eroare: {error}</p>
       </>
     )
@@ -87,7 +97,7 @@ function App() {
 
   return (
     <>
-      <TopBar section={section} onSection={onSection} />
+      <TopBar section={section} onSection={onSection} role={role} email={email} />
       {route.view === 'santier' && <SantierView onDataChanged={refetch} />}
       {route.view === 'config' && (
         <ConfigurareView
@@ -121,6 +131,48 @@ function App() {
         />
       )}
     </>
+  )
+}
+
+/** Aplicația de șantier (rolul site): DOAR ziua de raportare. */
+function SiteApp({ role, email }: { role: Role; email: string }) {
+  return (
+    <>
+      <TopBar section="santier" onSection={() => {}} role={role} email={email} />
+      <SantierView />
+    </>
+  )
+}
+
+function App() {
+  const { session, role, loading } = useAuth()
+
+  if (loading) {
+    return <p className="p-8 text-center text-sm text-[#5B6673]">Se încarcă…</p>
+  }
+  if (!session) {
+    return <LoginView />
+  }
+
+  const email = session.user.email ?? ''
+  if (role === 'site') {
+    return <SiteApp role={role} email={email} />
+  }
+  if (role === 'admin' || role === 'finance') {
+    return <OfficeApp role={role} email={email} />
+  }
+  // utilizator autentificat dar fără rol CVR atribuit
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center gap-3 px-4 text-center">
+      <p className="font-medium">Contul tău nu are încă un rol în CVR.</p>
+      <p className="text-sm text-[#5B6673]">Cere administratorului să îți atribuie unul.</p>
+      <button
+        onClick={() => void signOut()}
+        className="rounded-full bg-[#EEECE7] px-5 py-2.5 text-sm font-medium"
+      >
+        Ieși din cont
+      </button>
+    </div>
   )
 }
 
