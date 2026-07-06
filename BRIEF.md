@@ -49,7 +49,7 @@ Single-page React app → Supabase (Postgres + Auth + RLS). Shared skeleton tabl
 - [x] 4-step wizard (Informații proiect, Joburi + buget pe 5 categorii, Taskuri, Livrabile with UM/cantitate/pondere), live check "Ponderile dintr-un task trebuie să însumeze 100%", summary sidebar "Valoare totală contract" (acceptance: a full new project can be created and appears in Proiecte — verificat cap-coadă cu un proiect de test „Hală Logistică Chitila" 395.000 lei, apărut în listă, apoi șters ca datele demo să rămână cele din BRIEF, screenshot `/qa/06-*.png`) · `e9bba53`
 
 ### Phase 6: Auth and roles
-- [ ] Supabase email login, role from user metadata, route guards: `site` sees only Șantier, `finance` and `admin` see everything (acceptance: automated check that a site-role session cannot fetch cost rows)
+- [x] Supabase email login, role from user metadata, route guards: `site` sees only Șantier, `finance` and `admin` see everything (acceptance: automated check that a site-role session cannot fetch cost rows — `npm run check:roles`, 6/6 verificări trec; gate-ul UI verificat în browser cu site@cvr.demo) · `f8cd56c`
 
 ### Phase 7: QA and polish
 - [ ] Diacritics sweep (comma-below ș ț everywhere), Romanian number formatting via one shared formatter, loading and error states (acceptance: grep finds no cedilla ş ţ, no raw unformatted numbers)
