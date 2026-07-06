@@ -1,0 +1,67 @@
+# Project Brief: Socend CVR
+
+## What This Is
+Internal web app tracking cost vs value on Socend Construct's live projects. Office staff set up Proiect → Joburi → Taskuri → Livrabile with values, quantities and weights, then watch 5 KPIs. The site foreman reports daily built quantities from his phone, only for tasks that had labour that day (fed by Pontaj). Design already approved in Claude Design (`Socend CVR App.dc.html`); this build implements it 1:1.
+
+## Done Looks Like
+- All 6 screens from the design file working against the shared Supabase, in Romanian.
+- The 5 KPIs calculate exactly per the formulas in `.claude/CLAUDE.md` and are covered by unit tests.
+- Mihai's day-close flow works end to end: labour-today filter → steppers → save → CVR updates.
+- Role-based access enforced by RLS (admin, finance, site).
+- Feature branch pushed, PR open with screenshots. Nothing merged.
+
+## Tech Stack
+Vite + React + TypeScript + Tailwind (matches the other Socend frontends). Supabase JS v2 on the shared project `rvqsjxgybqbphrnhhyfz` (one database, many frontends: this is how CVR, P&L and Pontaj communicate). Vitest for the KPI math. GitHub feature branch + PR.
+
+## Architecture
+Single-page React app → Supabase (Postgres + Auth + RLS). Shared skeleton tables (`projects`, `jobs`, `tasks`, `deliverables`) used later by Pontaj too. CVR-only tables prefixed `cvr_`. Labour-today read through view `labour_today`, stubbed now, repointed to Pontaj tables later. No backend server.
+
+## Build Phases
+
+### Phase 0: Setup
+- [ ] `git init`, create branch `feature/cvr-v1`, add `.gitignore` (node_modules, .env.local, /qa)
+- [ ] Scaffold Vite + React + TS + Tailwind; app boots on the port claimed in the parent `CLAUDE.md` port registry (acceptance: `npm run dev` serves a page)
+- [ ] Via Supabase MCP: `get_project_url` + `get_publishable_keys` for ref `rvqsjxgybqbphrnhhyfz`, write `.env.local`, create `src/lib/supabase.ts` (acceptance: a test query connects)
+- [ ] Register claude_design MCP if missing, import the design project, save `Socend CVR App.dc.html` reference into `/design`, extract tokens to `src/design/tokens.ts` (acceptance: tokens file matches the palette in `.claude/CLAUDE.md`)
+
+### Phase 1: Database
+- [ ] Read-only inspection of existing schema; write findings to `DECISIONS.md` (acceptance: list of existing tables recorded, nothing modified)
+- [ ] Migration `cvr_core`: `projects`, `jobs`, `tasks`, `deliverables` (create if absent), `cvr_daily_entries`, `cvr_cost_entries`, `cvr_billing`, `cvr_labour_stub`, enums for status and cost categories (Manoperă, Utilaje, Materiale, Subcontractori, Organizare) (acceptance: migration applies cleanly)
+- [ ] Migration `cvr_rls`: RLS on all new tables, policies for `admin`, `finance`, `site` per `.claude/CLAUDE.md` (acceptance: anon client gets zero rows; site role cannot read `cvr_cost_entries`)
+- [ ] View `labour_today(project_id, task_id, workers)` reading `cvr_labour_stub` (acceptance: seeded stub rows appear in the view)
+- [ ] Migration `seed_demo_termoficare`: project Termoficare București (CMTEB, 2.482.395 lei, facturare pe stadii fizice) with jobs PT2, PT3, PT6, PT10, PT11. PT2 tasks: Conductă provizorie 57.600 lei (livrabile: Țeavă montată 62/100 m pondere 50, Suduri 118/180 pondere 30, Traversări carosabil 3/6 pondere 10, Traversări pietonale 7/12 pondere 10), Excavație și umplutură 66.880 lei (310/704 m3), Înlocuire conductă DN250 272.000 lei (0/320 m pondere 60, 0/128 suduri pondere 40), Refacere sistem rutier 120.960 lei (0/576 m2), Branșamente și probe 36.000 lei (0/8). Fill PT3/PT6/PT10/PT11 with sensible analogous data. Second project: Parc Fotovoltaic Dolj 4,2 MW (Energize, facturare lunară, 1.343.260 lei, Zona A + Zona B: Batere piloni, Structură metalică, Montaj panouri, Cabluri DC, Teste și PIF). Billing PT-project: Depus 476.175, Certificat 476.175, Facturat 476.175, Încasat 380.000. Stub labour today on 5 Termoficare tasks + 1 Zona A task (acceptance: seed applies, app can query it)
+
+### Phase 2: Domain logic
+- [ ] `src/domain/kpi.ts` implementing every formula from `.claude/CLAUDE.md` (acceptance: compiles, exported pure functions)
+- [ ] Vitest unit tests with these exact vectors, tolerance ±0,01: task_pct(62/100 w50, 118/180 w30, 3/6 w10, 7/12 w10) = 0,615; EV = 57.600 × 0,615 = 35.424; task_pct(310/704 w100) = 0,4403; margin(EV 100.000, cost 76.500) = 0,235; behind_days(plan 0,39, done 0,354, 100 days) = 3,6 (acceptance: `npm test` green)
+- [ ] Data hooks: fetch project tree, KPIs per project/job, billing, costs (acceptance: Proiecte list renders seeded data from Supabase)
+
+### Phase 3: Office screens
+- [ ] Proiecte list per design: cards with bar + plan tick, 3 pills (grafic in days, cost sub/peste buget, marjă) (acceptance: matches design, screenshot `/qa/01-proiecte-*.png`)
+- [ ] Proiect detail: 5 KPI cards with the exact Romanian questions and captions from the design, Flux facturare (Depus → Certificat → Facturat → Încasat + caption row), jobs list, "Cum se calculează" panel (acceptance: KPI values match unit-tested functions, screenshot `/qa/02-*.png`)
+- [ ] Job detail: task cards with status pills, livrabile rows (weight chip, mini bar, "62 / 100 m"), "x% din valoarea taskului realizată", Pornește taskul / Marchează finalizat; Buget vs cost real per category with over-budget red; Costuri înregistrate + Adaugă cost form writing to `cvr_cost_entries` (acceptance: adding a cost updates KPIs live, screenshot `/qa/03-*.png`)
+
+### Phase 4: Șantier screens (mobile first)
+- [ ] Day view: dark navy day header, "Pontaj spune" strip, one tappable card per labour-today task with remaining quantities ("mai sunt 38 m"), empty state, button "Închide ziua · N taskuri" (acceptance: PT6 in-progress tasks without labour do NOT appear, screenshot `/qa/04-*.png`)
+- [ ] Report screen "Ce s-a construit azi": one row per livrabil with 52px steppers, "Salvează ziua" writes `cvr_daily_entries` and increments `done` in one transaction, flips neinceput → in_lucru when quantities > 0, success box "Zi închisă ✓" (acceptance: saving updates Proiecte KPIs, screenshot `/qa/05-*.png`)
+
+### Phase 5: Configurare proiect
+- [ ] 4-step wizard (Informații proiect, Joburi + buget pe 5 categorii, Taskuri, Livrabile with UM/cantitate/pondere), live check "Ponderile dintr-un task trebuie să însumeze 100%", summary sidebar "Valoare totală contract" (acceptance: a full new project can be created and appears in Proiecte, screenshot `/qa/06-*.png`)
+
+### Phase 6: Auth and roles
+- [ ] Supabase email login, role from user metadata, route guards: `site` sees only Șantier, `finance` and `admin` see everything (acceptance: automated check that a site-role session cannot fetch cost rows)
+
+### Phase 7: QA and polish
+- [ ] Diacritics sweep (comma-below ș ț everywhere), Romanian number formatting via one shared formatter, loading and error states (acceptance: grep finds no cedilla ş ţ, no raw unformatted numbers)
+- [ ] Screenshot every screen at 390px and 1280px into `/qa`, compare against the design file, fix visual gaps (acceptance: all screenshots present and matching)
+
+### Phase 8: Ship
+- [ ] Update `BRIEF.md` checkboxes and `DECISIONS.md`, push `feature/cvr-v1`, open PR with `gh pr create` including summary + `/qa` screenshots, then STOP (acceptance: PR URL printed; nothing merged)
+
+## External Services
+- Supabase shared project `rvqsjxgybqbphrnhhyfz` (exists; keys via Supabase MCP)
+- claude_design MCP `https://api.anthropic.com/v1/design/mcp` (auth once via `/design-login`)
+- GitHub (repo + PR), Chrome DevTools MCP for screenshots (installed)
+
+## Constraints and Rules
+See `.claude/CLAUDE.md`: additive-only migrations, RLS everywhere, no people in CVR, Romanian UI with diacritics, Apple-like design per the imported file, never merge the PR.
