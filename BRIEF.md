@@ -34,12 +34,12 @@ Single-page React app → Supabase (Postgres + Auth + RLS). Shared skeleton tabl
 ### Phase 2: Domain logic
 - [x] `src/domain/kpi.ts` implementing every formula from `.claude/CLAUDE.md` (acceptance: compiles, exported pure functions) · `73d87a3`
 - [x] Vitest unit tests with these exact vectors, tolerance ±0,01: task_pct(62/100 w50, 118/180 w30, 3/6 w10, 7/12 w10) = 0,615; EV = 57.600 × 0,615 = 35.424; task_pct(310/704 w100) = 0,4403; margin(EV 100.000, cost 76.500) = 0,235; behind_days(plan 0,39, done 0,354, 100 days) = 3,6 (acceptance: `npm test` green) · `998d3ca`
-- [ ] Data hooks: fetch project tree, KPIs per project/job, billing, costs (acceptance: Proiecte list renders seeded data from Supabase)
+- [x] Data hooks: fetch project tree, KPIs per project/job, billing, costs (acceptance: Proiecte list renders seeded data from Supabase) · `daf7670`
 
 ### Phase 3: Office screens
-- [ ] Proiecte list per design: cards with bar + plan tick, 3 pills (grafic in days, cost sub/peste buget, marjă) (acceptance: matches design, screenshot `/qa/01-proiecte-*.png`)
-- [ ] Proiect detail: 5 KPI cards with the exact Romanian questions and captions from the design, Flux facturare (Depus → Certificat → Facturat → Încasat + caption row), jobs list, "Cum se calculează" panel (acceptance: KPI values match unit-tested functions, screenshot `/qa/02-*.png`)
-- [ ] Job detail: task cards with status pills, livrabile rows (weight chip, mini bar, "62 / 100 m"), "x% din valoarea taskului realizată", Pornește taskul / Marchează finalizat; Buget vs cost real per category with over-budget red; Costuri înregistrate + Adaugă cost form writing to `cvr_cost_entries` (acceptance: adding a cost updates KPIs live, screenshot `/qa/03-*.png`)
+- [x] Proiecte list per design: cards with bar + plan tick, 3 pills (grafic in days, cost sub/peste buget, marjă) (acceptance: matches design, screenshot `/qa/01-proiecte-*.png`) · `175cf6b`
+- [x] Proiect detail: 5 KPI cards with the exact Romanian questions and captions from the design, Flux facturare (Depus → Certificat → Facturat → Încasat + caption row), jobs list, "Cum se calculează" panel (acceptance: KPI values match unit-tested functions, screenshot `/qa/02-*.png`) · `7a66a75` — întrebările RO sunt formulate de mine (designul e blocat pe /design-login); de reconciliat după import
+- [x] Job detail: task cards with status pills, livrabile rows (weight chip, mini bar, "62 / 100 m"), "x% din valoarea taskului realizată", Pornește taskul / Marchează finalizat; Buget vs cost real per category with over-budget red; Costuri înregistrate + Adaugă cost form writing to `cvr_cost_entries` (acceptance: adding a cost updates KPIs live — verificat: +1.000 lei a actualizat instant totalurile, apoi șters, screenshot `/qa/03-*.png`) · `0584ccd`
 
 ### Phase 4: Șantier screens (mobile first)
 - [ ] Day view: dark navy day header, "Pontaj spune" strip, one tappable card per labour-today task with remaining quantities ("mai sunt 38 m"), empty state, button "Închide ziua · N taskuri" (acceptance: PT6 in-progress tasks without labour do NOT appear, screenshot `/qa/04-*.png`)
