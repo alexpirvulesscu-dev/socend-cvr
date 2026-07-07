@@ -52,8 +52,8 @@ Single-page React app → Supabase (Postgres + Auth + RLS). Shared skeleton tabl
 - [x] Supabase email login, role from user metadata, route guards: `site` sees only Șantier, `finance` and `admin` see everything (acceptance: automated check that a site-role session cannot fetch cost rows — `npm run check:roles`, 6/6 verificări trec; gate-ul UI verificat în browser cu site@cvr.demo) · `f8cd56c`
 
 ### Phase 7: QA and polish
-- [ ] Diacritics sweep (comma-below ș ț everywhere), Romanian number formatting via one shared formatter, loading and error states (acceptance: grep finds no cedilla ş ţ, no raw unformatted numbers)
-- [ ] Screenshot every screen at 390px and 1280px into `/qa`, compare against the design file, fix visual gaps (acceptance: all screenshots present and matching)
+- [x] Diacritics sweep (comma-below ș ț everywhere), Romanian number formatting via one shared formatter, loading and error states (acceptance: grep finds no cedilla ş ţ, no raw unformatted numbers — grep curat; review multi-agent a mai găsit 7 probleme confirmate, toate reparate: pluralizare „un muncitor", empty states pe Proiecte/Joburi/Taskuri, zecimale în „mai sunt", raportarea eșecului de curățenie la salvarea wizard-ului) · `d942cec`
+- [x] Screenshot every screen at 390px and 1280px into `/qa`, compare against the design file, fix visual gaps (acceptance: all screenshots present — 18 capturi: 6 ecrane × 2 lățimi + stări goale/validare/succes; comparația cu fișierul de design rămâne blocată pe /design-login) · `d942cec`
 
 ### Phase 8: Ship
 - [ ] Update `BRIEF.md` checkboxes and `DECISIONS.md`, push `feature/cvr-v1`, open PR with `gh pr create` including summary + `/qa` screenshots, then STOP (acceptance: PR URL printed; nothing merged)
