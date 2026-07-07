@@ -30,7 +30,7 @@ Internal cost-vs-value (CVR) app for Socend Construct. Hierarchy: Proiect → Jo
 
 ## Design source
 - The imported Claude Design file `Socend CVR App.dc.html` is the single source of truth for layout, spacing, component structure and UI copy. Extract design tokens into `src/design/tokens.ts`.
-- Aesthetic: clean, Apple-like. White borderless cards on `#FAF9F6`, radius 16 to 20px, soft diffuse shadows, frosted translucent top bar, SF Pro or Inter, tabular numbers, generous white space. Dark navy `#0D1A2D` only on the Șantier day header, yellow `#E2E04A` only there.
+- Aesthetic: clean, Apple-like. White borderless cards on `#FAF9F6`, radius 16 to 20px, soft diffuse shadows, frosted translucent top bar, SF Pro or Inter, tabular numbers, generous white space. Teal `#115468` only on the Șantier day header (Alex changed it from navy at the 2026-07-07 review), yellow `#E2E04A` only there.
 - Palette: bg `#FAF9F6`, card `#FFFFFF`, border `#E8E8E8`, dark `#0D1A2D`/`#14263F`, text `#0D1A2D`/`#5B6673`, primary `#58A834` (hover `#46862A`, tint `#DDEDDC`), links `#115468`, success `#58A834`, warning `#F0A800`, error `#D64545`. Never pure black.
 
 ## Domain rules
