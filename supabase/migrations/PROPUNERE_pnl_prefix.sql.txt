@@ -1,0 +1,31 @@
+-- PROPUNERE (NEAPLICATĂ): prefixul pnl_ pe tabelele P&L
+-- ⚠️ HARD STOP: redenumirea tabelelor P&L rupe INSTANT aplicația P&L live și
+-- workflow-urile n8n de facturi, care scriu în `plati`/`incasari` după nume.
+-- Planul sigur, de aprobat în chat înainte de execuție:
+--
+-- 1. Redenumire + view-uri de compatibilitate cu numele vechi (auto-updatable,
+--    deci aplicația P&L și n8n continuă să CITEASCĂ și să SCRIE fără schimbări):
+--      alter table proiecte  rename to pnl_proiecte;
+--      alter table plati     rename to pnl_plati;
+--      alter table incasari  rename to pnl_incasari;
+--      alter table categorii rename to pnl_categorii;
+--      alter table vehicule  rename to pnl_vehicule;
+--      create view proiecte  as select * from pnl_proiecte;
+--      create view plati     as select * from pnl_plati;
+--      create view incasari  as select * from pnl_incasari;
+--      create view categorii as select * from pnl_categorii;
+--      create view vehicule  as select * from pnl_vehicule;
+--      (+ politici RLS pe view-uri prin security_invoker)
+--
+-- 2. CE RĂMÂNE TOTUȘI RUPT prin view-uri: abonamentele realtime ale aplicației
+--    P&L (postgres_changes pe 'proiecte' etc. ascultă TABELE, nu view-uri) —
+--    aplicația nu se mai actualizează singură la schimbări, doar la refresh.
+--    De aceea pasul corect e să actualizez ÎN ACELAȘI timp și data.jsx din
+--    Socend-P&L (repo separat, commit separat) la numele pnl_*, apoi view-urile
+--    de compatibilitate rămân DOAR pentru n8n până confirmăm workflow-urile.
+--
+-- 3. Verificare după execuție: teste de scriere prin numele vechi (n8n path)
+--    și prin cele noi (app path), plus un import de test în n8n.
+--
+-- Aprobare necesară de la Alex înainte de rulare (regula lui: schema changes
+-- pe tabelele hrănite de n8n se anunță).

@@ -29,6 +29,7 @@ import {
   ProgressBar,
   scheduleText,
 } from '../components/ui'
+import { JobModal } from './modals'
 
 const inputCls =
   'w-full rounded-xl border border-[#E8E8E8] bg-white px-3 py-2 text-sm outline-none focus:border-[#58A834]'
@@ -293,6 +294,7 @@ export function ProiectView({
   onDeleted: () => void
 }) {
   const [editing, setEditing] = useState(false)
+  const [addingJob, setAddingJob] = useState(false)
   const k = p.kpis
   const shouldCost = k.costVariance + k.actualCost
 
@@ -380,10 +382,31 @@ export function ProiectView({
 
       {/* Joburi — carduri separate, clicabile, cu reacție la hover (ca în design) */}
       <div className="space-y-3">
-        <h3 className="text-base font-semibold">Joburi</h3>
+        <div className="flex items-center justify-between">
+          <h3 className="text-base font-semibold">Joburi</h3>
+          <button
+            onClick={() => setAddingJob(true)}
+            className="rounded-full bg-[#DDEDDC] px-4 py-1.5 text-sm font-medium text-[#46862A] hover:bg-[#CBE3C9]"
+          >
+            + Adaugă job
+          </button>
+        </div>
+        {addingJob && (
+          <JobModal
+            projectId={p.id}
+            sortOrder={p.jobs.length + 1}
+            onClose={() => setAddingJob(false)}
+            onSaved={() => {
+              setAddingJob(false)
+              onChanged()
+            }}
+          />
+        )}
         {p.jobs.length === 0 && (
           <Card>
-            <p className="text-sm text-[#5B6673]">Proiectul nu are încă joburi configurate.</p>
+            <p className="text-sm text-[#5B6673]">
+              Proiectul nu are încă joburi. Apasă „+ Adaugă job" ca să definești primul.
+            </p>
           </Card>
         )}
         {p.jobs.map((j) => {

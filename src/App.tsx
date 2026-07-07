@@ -139,6 +139,7 @@ function OfficeApp({ role, email }: { role: Role; email: string }) {
       {route.view === 'job' && project && job && (
         <JobView
           job={job}
+          projectId={project.id}
           projectName={project.name}
           onBack={() => setRoute({ view: 'proiect', projectId: project.id })}
           onChanged={refetch}

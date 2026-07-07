@@ -152,6 +152,63 @@ export async function deleteJob(id: string): Promise<void> {
   if (error) throw error
 }
 
+/** Adaugă un job nou pe un proiect EXISTENT (ex. proiectele importate din Pontaj). */
+export async function addJob(
+  projectId: string,
+  j: { name: string; startDate: string; endDate: string },
+  budgets: Record<CostCategory, number>,
+  sortOrder: number
+): Promise<void> {
+  const { data, error } = await supabase
+    .from('jobs')
+    .insert({
+      project_id: projectId,
+      name: j.name,
+      start_date: j.startDate,
+      end_date: j.endDate,
+      sort_order: sortOrder,
+    })
+    .select('id')
+    .single()
+  if (error) throw error
+  const rows = Object.entries(budgets)
+    .filter(([, amount]) => amount > 0)
+    .map(([category, amount]) => ({ job_id: data.id as string, category, amount }))
+  if (rows.length > 0) {
+    const { error: bErr } = await supabase.from('cvr_job_budgets').insert(rows)
+    if (bErr) throw bErr
+  }
+}
+
+/** Adaugă un task nou (cu livrabilele lui) pe un job EXISTENT. */
+export async function addTask(
+  jobId: string,
+  t: { name: string; value: number },
+  deliverables: DeliverablePatch[],
+  sortOrder: number
+): Promise<void> {
+  const { data, error } = await supabase
+    .from('tasks')
+    .insert({ job_id: jobId, name: t.name, value: t.value, sort_order: sortOrder })
+    .select('id')
+    .single()
+  if (error) throw error
+  if (deliverables.length > 0) {
+    const { error: dErr } = await supabase.from('deliverables').insert(
+      deliverables.map((d, i) => ({
+        task_id: data.id as string,
+        name: d.name,
+        um: d.um,
+        qty_total: d.qtyTotal,
+        qty_done: d.qtyDone,
+        weight: d.weight,
+        sort_order: i + 1,
+      }))
+    )
+    if (dErr) throw dErr
+  }
+}
+
 // ── Editarea taskurilor și livrabilelor ──────────────────────────────────
 export async function updateTask(id: string, t: { name: string; value: number }): Promise<void> {
   const { error } = await supabase.from('tasks').update({ name: t.name, value: t.value }).eq('id', id)

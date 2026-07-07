@@ -42,7 +42,8 @@ async function readPage(table, from, to) {
 }
 
 async function writeChunk(table, rows, token) {
-  const res = await fetch(`${NEW_URL}/rest/v1/${table}?on_conflict=id`, {
+  // în proiectul partajat tabelele Pontaj au prefixul pontaj_
+  const res = await fetch(`${NEW_URL}/rest/v1/pontaj_${table}?on_conflict=id`, {
     method: 'POST',
     headers: {
       apikey: NEW_KEY,

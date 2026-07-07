@@ -10,14 +10,14 @@
 |---|---|---|
 | P&L | `proiecte`, `plati`, `incasari`, `categorii`, `vehicule` | live, fed by n8n |
 | CVR | `projects/jobs/tasks/deliverables` (shared skeleton) + `cvr_*` | live at socend-cvr.vercel.app |
-| Pontaj | `workers`, `assignments`, `timesheets`, `bank_holidays`, `vehicles`, `locations`, `distances`, `fleet_assignments` | **data fully copied** (checksums verified: 2.161 assignments, 2.009 timesheets, 16.464h + 723h overtime, 27 workers); the old app still writes to the OLD project until repointed |
+| Pontaj | `pontaj_workers`, `pontaj_assignments`, `pontaj_timesheets`, `pontaj_bank_holidays`, `pontaj_vehicles`, `pontaj_locations`, `pontaj_distances`, `pontaj_fleet_assignments` | **data fully copied** (checksums verified: 2.161 assignments, 2.009 timesheets, 16.464h + 723h overtime, 27 workers); the old app still writes to the OLD project until repointed |
 
 **Project linkage** (the backbone of sync): every CVR project row carries `pnl_proiect_id` pointing at its P&L `proiecte` row. Rename / finalize / delete in CVR propagates automatically (rename also cascades into `plati`/`incasari` by name, exactly like the P&L app does it). Pontaj's 9 projects were merged into the shared skeleton `projects`, keeping their original IDs, so all 4.170 copied timesheet/assignment rows still point at valid projects. Where the P&L already had the same project by name (Pestisani, Termoficare, Auxiliar), the CVR row was linked to the **existing** P&L row — zero duplicates in the P&L dropdown.
 
 ## What YOU need to do (in order)
 
 1. **Repoint the Pontaj app** to the shared project: URL `https://rvqsjxgybqbphrnhhyfz.supabase.co`, the publishable key from CVR's `.env.local`. Two changes beyond the URL:
-   - Its `projects` table is now the shared one — the app reads `name`, `location`, `active`, which all exist; nothing else to rename.
+   - Its `projects` table is now the shared one — the app reads `name`, `location`, `active`, which all exist. All its OTHER tables now carry the `pontaj_` prefix (Alex's naming rule), so the app's table references change accordingly (e.g. `workers` → `pontaj_workers`).
    - **It must log in.** The old project allowed anonymous read/write; in the shared project the Pontaj tables require an authenticated user (deliberate — the publishable key is public now). Simplest: sign in with a dedicated user, or reuse `site@cvr.demo` until you make one.
 2. **Retire the old Pontaj project** once the app is repointed and verified (pause it in Supabase — free tier keeps the data as backup; nothing was deleted).
 3. **Decide the near-duplicates** (I did NOT auto-merge these):
@@ -30,6 +30,11 @@
 
 5. **Repoint `labour_today` / `labour_daily` to real Pontaj data.** Today they read the demo stub. Once the Pontaj app writes timesheets into the shared DB, ONE migration swaps the views to read `timesheets` (workers per task need a task-level mapping — today Pontaj tracks people per *project*, CVR asks per *task*; either Mihai's Pontaj gains a task field, or `labour_today` shows project-level people on all its in-progress tasks. That's a product decision for you).
 6. **Retire the demo seed** (one delete each for the two demo projects) whenever you're done showing the app around.
+
+## Naming rule (pontaj_ done · pnl_ awaiting your go)
+
+- **`pontaj_*`** — done: all 8 Pontaj tables renamed (they had zero consumers, so it was free).
+- **`pnl_*`** — prepared but NOT executed, because renaming `plati`/`incasari`/`proiecte` instantly breaks the live P&L app AND the n8n invoice workflows (your own hard rule says to flag this). The safe plan is in `supabase/migrations/PROPUNERE_pnl_prefix.sql.txt`: rename + compatibility views with the old names (so n8n keeps working unchanged) + update the P&L app's code to the new names in its own repo. Say "go pnl rename" and I'll execute the whole chain.
 
 ## Security findings (important now that CVR is public)
 
