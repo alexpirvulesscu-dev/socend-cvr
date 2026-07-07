@@ -136,7 +136,14 @@ export async function createProject(p: NewProject): Promise<string> {
     if (billErr) throw billErr
   } catch (err) {
     // curățenie: cascade șterge tot ce s-a apucat să creeze
-    await supabase.from('projects').delete().eq('id', projectId)
+    const { error: cleanupErr } = await supabase.from('projects').delete().eq('id', projectId)
+    if (cleanupErr) {
+      // dacă nici curățenia nu merge, spunem explicit că a rămas un proiect pe jumătate
+      throw new Error(
+        `${(err as Error).message} — în plus, curățenia a eșuat (${cleanupErr.message}); ` +
+          `proiectul "${p.name}" poate exista incomplet și trebuie șters manual`
+      )
+    }
     throw err
   }
 

@@ -26,6 +26,15 @@ export function ProiecteView({
         </button>
       </div>
 
+      {projects.length === 0 && (
+        <Card className="py-10 text-center">
+          <p className="font-medium">Niciun proiect încă</p>
+          <p className="mt-1 text-sm text-[#5B6673]">
+            Apasă „+ Proiect nou" ca să configurezi primul proiect.
+          </p>
+        </Card>
+      )}
+
       {projects.map((p) => {
         const k = p.kpis
         const costOk = costColor(k.costVariance)

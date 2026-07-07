@@ -34,3 +34,13 @@ export function dataRo(iso: string): string {
     year: 'numeric',
   })
 }
+
+/** Ziua de azi, pentru header-ul de șantier: „Luni, 6 iulie" */
+export function ziuaDeAzi(): string {
+  const s = new Date().toLocaleDateString('ro-RO', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  })
+  return s.charAt(0).toUpperCase() + s.slice(1)
+}

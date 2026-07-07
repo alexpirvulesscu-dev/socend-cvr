@@ -170,6 +170,9 @@ export function ProiectView({
       {/* Joburi */}
       <Card>
         <h3 className="mb-4 text-base font-semibold">Joburi</h3>
+        {p.jobs.length === 0 && (
+          <p className="text-sm text-[#5B6673]">Proiectul nu are încă joburi configurate.</p>
+        )}
         <div className="divide-y divide-[#E8E8E8]">
           {p.jobs.map((j) => {
             const jk = j.kpis

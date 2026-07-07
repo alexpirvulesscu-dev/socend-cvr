@@ -5,24 +5,16 @@
 //     „Salvează ziua" → RPC atomic → „Zi închisă ✓".
 import { useMemo, useState } from 'react'
 import { closeDay, type LabourTask, useLabourToday } from '../data/santier'
-import { num } from '../lib/format'
+import { num, ziuaDeAzi as azi } from '../lib/format'
 import { Card } from '../components/ui'
-
-function azi(): string {
-  const s = new Date().toLocaleDateString('ro-RO', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-  })
-  return s.charAt(0).toUpperCase() + s.slice(1)
-}
 
 /** „mai sunt 38 m țeavă · 62 suduri" — ce a rămas de construit pe task. */
 function remainingText(t: LabourTask): string {
   const parts = t.deliverables
     .map((d) => {
       const left = Number(d.qty_total) - Number(d.qty_done)
-      return left > 0 ? `${num(left)} ${d.um}` : null
+      // cantitățile zecimale (ex. 38,5 m) se afișează cu o zecimală, nu rotunjite
+      return left > 0 ? `${num(left, Number.isInteger(left) ? 0 : 1)} ${d.um}` : null
     })
     .filter(Boolean)
   if (parts.length === 0) return 'cantități complete'
@@ -39,7 +31,8 @@ function DayHeader({ workers, taskCount }: { workers: number; taskCount: number 
         <div className="mt-4 rounded-2xl bg-[#14263F] px-4 py-3">
           <p className="text-sm">
             <span className="font-semibold text-[#E2E04A]">Pontaj spune:</span>{' '}
-            {num(workers)} muncitori pe {taskCount === 1 ? 'un task' : `${taskCount} taskuri`} azi
+            {workers === 1 ? 'un muncitor' : `${num(workers)} muncitori`} pe{' '}
+            {taskCount === 1 ? 'un task' : `${taskCount} taskuri`} azi
           </p>
         </div>
       </div>
@@ -224,7 +217,9 @@ function ReportView({
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium">{d.name}</p>
                     <p className="text-xs text-[#5B6673]">
-                      {left > 0 ? `mai sunt ${num(left)} ${d.um}` : 'gata ✓'}
+                      {left > 0
+                        ? `mai sunt ${num(left, Number.isInteger(left) ? 0 : 1)} ${d.um}`
+                        : 'gata ✓'}
                     </p>
                   </div>
                   <Stepper

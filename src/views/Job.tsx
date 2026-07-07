@@ -259,6 +259,11 @@ export function JobView({
 
       <h3 className="pt-2 text-base font-semibold">Taskuri</h3>
       <div className="space-y-3">
+        {job.tasks.length === 0 && (
+          <Card>
+            <p className="text-sm text-[#5B6673]">Jobul nu are încă taskuri configurate.</p>
+          </Card>
+        )}
         {job.tasks.map((t) => (
           <TaskCard key={t.id} task={t} onChanged={onChanged} />
         ))}

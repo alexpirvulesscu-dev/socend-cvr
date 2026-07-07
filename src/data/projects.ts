@@ -103,7 +103,10 @@ export interface ProjectRow {
   start_date: string | null
   end_date: string | null
   jobs: JobRow[]
-  // PostgREST întoarce OBIECT (nu array) pentru relații 1:1 (unique pe project_id)
+  // PostgREST întoarce OBIECT pentru relația 1:1 (unique pe project_id).
+  // Toleranța pentru array de mai jos NU e un caz real de date, ci o plasă de
+  // siguranță pentru fereastra în care cache-ul de schemă PostgREST nu a
+  // detectat încă constrângerea unique (imediat după migrări).
   cvr_billing: BillingRow | BillingRow[] | null
 }
 
