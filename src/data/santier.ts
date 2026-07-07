@@ -84,3 +84,77 @@ export async function closeDay(
   })
   if (error) throw error
 }
+
+// ── Progresul lucrărilor pentru șantier (FĂRĂ bani pe ecran) ─────────────
+// Citește doar scheletul: proiecte → joburi → taskuri → livrabile.
+// Valorile taskurilor sunt folosite numai la ponderarea procentelor,
+// niciodată afișate în ecranele de șantier.
+export interface ProgressTask {
+  id: string
+  name: string
+  status: TaskStatus
+  value: number
+  sort_order: number
+  deliverables: DeliverableRow[]
+}
+
+export interface ProgressJob {
+  id: string
+  name: string
+  start_date: string
+  end_date: string
+  sort_order: number
+  tasks: ProgressTask[]
+}
+
+export interface ProgressProject {
+  id: string
+  name: string
+  jobs: ProgressJob[]
+}
+
+export async function fetchSkeletonProgress(): Promise<ProgressProject[]> {
+  const { data, error } = await supabase
+    .from('projects')
+    .select(
+      `id, name,
+       jobs (
+         id, name, start_date, end_date, sort_order,
+         tasks (
+           id, name, status, value, sort_order,
+           deliverables ( id, name, um, qty_total, qty_done, weight, sort_order )
+         )
+       )`
+    )
+    .order('name')
+  if (error) throw error
+  return ((data ?? []) as unknown as ProgressProject[]).map((p) => ({
+    ...p,
+    jobs: [...p.jobs]
+      .sort((a, b) => a.sort_order - b.sort_order)
+      .map((j) => ({
+        ...j,
+        tasks: [...j.tasks]
+          .sort((a, b) => a.sort_order - b.sort_order)
+          .map((t) => ({
+            ...t,
+            deliverables: [...t.deliverables].sort((a, b) => a.sort_order - b.sort_order),
+          })),
+      })),
+  }))
+}
+
+export function useSkeletonProgress() {
+  const [projects, setProjects] = useState<ProgressProject[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetchSkeletonProgress()
+      .then(setProjects)
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setLoading(false))
+  }, [])
+
+  return { projects, loading, error }
+}
