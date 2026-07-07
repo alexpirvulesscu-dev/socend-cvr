@@ -102,6 +102,9 @@ export interface ProjectRow {
   contract_value: number
   start_date: string | null
   end_date: string | null
+  active: boolean
+  location: string | null
+  pnl_proiect_id: string | null
   jobs: JobRow[]
   // PostgREST întoarce OBIECT pentru relația 1:1 (unique pe project_id).
   // Toleranța pentru array de mai jos NU e un caz real de date, ci o plasă de
@@ -192,7 +195,7 @@ function decorateProject(p: ProjectRow, today: string): ProjectWithKpis {
 }
 
 const TREE_SELECT = `
-  id, name, client, billing_mode, contract_value, start_date, end_date,
+  id, name, client, billing_mode, contract_value, start_date, end_date, active, location, pnl_proiect_id,
   jobs (
     id, name, start_date, end_date, sort_order,
     tasks (

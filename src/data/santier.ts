@@ -126,6 +126,7 @@ export async function fetchSkeletonProgress(): Promise<ProgressProject[]> {
          )
        )`
     )
+    .eq('active', true) // proiectele finalizate nu apar pe șantier
     .order('name')
   if (error) throw error
   return ((data ?? []) as unknown as ProgressProject[]).map((p) => ({
