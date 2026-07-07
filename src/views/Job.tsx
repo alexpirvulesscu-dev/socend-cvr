@@ -1,25 +1,328 @@
 // Ecranul de detaliu Job: taskuri cu livrabile, buget vs cost real pe
 // categorii și costurile înregistrate, cu formularul „Adaugă cost".
+// Totul e editabil: jobul (nume/date/bugete), taskurile (nume/valoare/livrabile),
+// costurile se pot șterge, iar taskurile finalizate se pot redeschide.
 import { useState } from 'react'
 import {
   COST_CATEGORIES,
   COST_CATEGORY_LABELS,
   type CostCategory,
+  type DeliverableRow,
   type JobWithKpis,
   type TaskRow,
 } from '../data/projects'
-import { addCostEntry, setTaskStatus } from '../data/mutations'
+import {
+  addCostEntry,
+  addDeliverable,
+  deleteCostEntry,
+  deleteDeliverable,
+  deleteJob,
+  deleteTask,
+  setTaskStatus,
+  updateDeliverable,
+  updateJob,
+  updateTask,
+} from '../data/mutations'
 import { costColor, deliverablePct, scheduleColor, taskPct } from '../domain/kpi'
 import { compact, dataRo, lei, num, pct } from '../lib/format'
 import {
   BackLink,
   Card,
+  DangerButton,
   KpiPill,
+  Modal,
   NeutralPill,
   ProgressBar,
   StatusPill,
   scheduleText,
 } from '../components/ui'
+
+const inputCls =
+  'w-full rounded-xl border border-[#E8E8E8] bg-white px-3 py-2 text-sm outline-none focus:border-[#58A834]'
+const labelCls = 'mb-1 block text-xs font-medium text-[#5B6673]'
+
+function toNum(s: string): number {
+  return Number(s.replace(/\./g, '').replace(',', '.')) || 0
+}
+
+/** Modalul de editare al jobului: nume, date, bugetele pe 5 categorii, ștergere. */
+function JobEditModal({
+  job,
+  onClose,
+  onSaved,
+  onDeleted,
+}: {
+  job: JobWithKpis
+  onClose: () => void
+  onSaved: () => void
+  onDeleted: () => void
+}) {
+  const [name, setName] = useState(job.name)
+  const [startDate, setStartDate] = useState(job.start_date)
+  const [endDate, setEndDate] = useState(job.end_date)
+  const [budgets, setBudgets] = useState<Record<CostCategory, string>>(
+    Object.fromEntries(
+      COST_CATEGORIES.map((c) => [c, String(job.budgetByCategory[c] ?? 0)])
+    ) as Record<CostCategory, string>
+  )
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function run(action: () => Promise<void>, after: () => void) {
+    setBusy(true)
+    setError(null)
+    try {
+      await action()
+      after()
+    } catch (e) {
+      setError((e as Error).message)
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Modal title="Editează jobul" onClose={onClose}>
+      <div className="space-y-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div>
+            <label className={labelCls}>Nume job</label>
+            <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
+          <div>
+            <label className={labelCls}>Început</label>
+            <input type="date" className={inputCls} value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+          </div>
+          <div>
+            <label className={labelCls}>Sfârșit</label>
+            <input type="date" className={inputCls} value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+          </div>
+        </div>
+        <div>
+          <p className={labelCls}>Buget pe categorii (lei)</p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+            {COST_CATEGORIES.map((c) => (
+              <div key={c}>
+                <label className={labelCls}>{COST_CATEGORY_LABELS[c]}</label>
+                <input
+                  className={inputCls}
+                  inputMode="decimal"
+                  value={budgets[c]}
+                  onChange={(e) => setBudgets((old) => ({ ...old, [c]: e.target.value }))}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+        {error && <p className="text-sm text-[#D64545]">Eroare: {error}</p>}
+        <div className="flex items-center justify-between border-t border-[#E8E8E8] pt-4">
+          <button
+            disabled={busy || !name.trim() || !startDate || !endDate}
+            onClick={() =>
+              run(
+                () =>
+                  updateJob(
+                    job.id,
+                    { name: name.trim(), startDate, endDate },
+                    Object.fromEntries(
+                      COST_CATEGORIES.map((c) => [c, toNum(budgets[c])])
+                    ) as Record<CostCategory, number>
+                  ),
+                onSaved
+              )
+            }
+            className="rounded-full bg-[#58A834] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#46862A] disabled:opacity-40"
+          >
+            {busy ? 'Se salvează…' : 'Salvează modificările'}
+          </button>
+          <DangerButton
+            label="Șterge jobul"
+            onConfirmed={() => run(() => deleteJob(job.id), onDeleted)}
+          />
+        </div>
+        <p className="text-xs text-[#5B6673]">
+          Ștergerea jobului elimină definitiv taskurile, livrabilele, raportările și costurile lui.
+        </p>
+      </div>
+    </Modal>
+  )
+}
+
+// Starea de editare a unui livrabil în modalul de task
+interface EditDeliv {
+  id: string | null // null = livrabil nou
+  name: string
+  um: string
+  qtyTotal: string
+  qtyDone: string
+  weight: string
+  removed: boolean
+}
+
+/** Modalul de editare al taskului: nume, valoare, livrabile (cu corectarea qty realizat). */
+function TaskEditModal({
+  task,
+  onClose,
+  onSaved,
+  onDeleted,
+}: {
+  task: TaskRow
+  onClose: () => void
+  onSaved: () => void
+  onDeleted: () => void
+}) {
+  const [name, setName] = useState(task.name)
+  const [value, setValue] = useState(String(task.value))
+  const [rows, setRows] = useState<EditDeliv[]>(
+    task.deliverables.map((d: DeliverableRow) => ({
+      id: d.id,
+      name: d.name,
+      um: d.um,
+      qtyTotal: String(d.qty_total),
+      qtyDone: String(d.qty_done),
+      weight: String(d.weight),
+      removed: false,
+    }))
+  )
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const liveRows = rows.filter((r) => !r.removed)
+  const weightSum = liveRows.reduce((s, r) => s + toNum(r.weight), 0)
+  const weightsOk = liveRows.length === 0 || Math.abs(weightSum - 100) <= 0.01
+
+  function setRow(i: number, patch: Partial<EditDeliv>) {
+    setRows((old) => old.map((r, idx) => (idx === i ? { ...r, ...patch } : r)))
+  }
+
+  async function save() {
+    setBusy(true)
+    setError(null)
+    try {
+      await updateTask(task.id, { name: name.trim(), value: toNum(value) })
+      let sort = 1
+      for (const r of rows) {
+        if (r.removed) {
+          if (r.id) await deleteDeliverable(r.id)
+          continue
+        }
+        const patch = {
+          name: r.name.trim(),
+          um: r.um.trim() || 'buc',
+          qtyTotal: toNum(r.qtyTotal),
+          qtyDone: toNum(r.qtyDone),
+          weight: toNum(r.weight),
+        }
+        if (r.id) await updateDeliverable(r.id, patch)
+        else await addDeliverable(task.id, patch, sort)
+        sort++
+      }
+      onSaved()
+    } catch (e) {
+      setError((e as Error).message)
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Modal title="Editează taskul" onClose={onClose}>
+      <div className="space-y-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_180px]">
+          <div>
+            <label className={labelCls}>Nume task</label>
+            <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
+          <div>
+            <label className={labelCls}>Valoare (lei)</label>
+            <input className={inputCls} inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value)} />
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold">Livrabile</p>
+            <span
+              className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                weightsOk ? 'bg-[#DDEDDC] text-[#46862A]' : 'bg-[#F8DEDE] text-[#B23A3A]'
+              }`}
+            >
+              ponderi: {num(weightSum)}%
+            </span>
+          </div>
+          {rows.map((r, i) =>
+            r.removed ? null : (
+              <div key={r.id ?? `new-${i}`} className="flex items-end gap-2">
+                <div className="flex-1">
+                  <label className={labelCls}>Livrabil</label>
+                  <input className={inputCls} value={r.name} onChange={(e) => setRow(i, { name: e.target.value })} />
+                </div>
+                <div className="w-16">
+                  <label className={labelCls}>UM</label>
+                  <input className={inputCls} value={r.um} onChange={(e) => setRow(i, { um: e.target.value })} />
+                </div>
+                <div className="w-20">
+                  <label className={labelCls}>Realizat</label>
+                  <input className={inputCls} inputMode="decimal" value={r.qtyDone} onChange={(e) => setRow(i, { qtyDone: e.target.value })} />
+                </div>
+                <div className="w-20">
+                  <label className={labelCls}>Total</label>
+                  <input className={inputCls} inputMode="decimal" value={r.qtyTotal} onChange={(e) => setRow(i, { qtyTotal: e.target.value })} />
+                </div>
+                <div className="w-20">
+                  <label className={labelCls}>Pondere</label>
+                  <input className={inputCls} inputMode="decimal" value={r.weight} onChange={(e) => setRow(i, { weight: e.target.value })} />
+                </div>
+                <DangerButton label="✕" armedLabel="Sigur?" onConfirmed={() => setRow(i, { removed: true })} />
+              </div>
+            )
+          )}
+          {!weightsOk && (
+            <p className="text-sm text-[#D64545]">Ponderile dintr-un task trebuie să însumeze 100%.</p>
+          )}
+          <button
+            onClick={() =>
+              setRows((old) => [
+                ...old,
+                { id: null, name: '', um: '', qtyTotal: '', qtyDone: '0', weight: '', removed: false },
+              ])
+            }
+            className="rounded-full bg-[#DDEDDC] px-4 py-2 text-sm font-medium text-[#46862A] hover:bg-[#CBE3C9]"
+          >
+            + Adaugă livrabil
+          </button>
+        </div>
+
+        {error && <p className="text-sm text-[#D64545]">Eroare: {error}</p>}
+
+        <div className="flex items-center justify-between border-t border-[#E8E8E8] pt-4">
+          <button
+            disabled={busy || !name.trim() || !weightsOk}
+            onClick={save}
+            className="rounded-full bg-[#58A834] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#46862A] disabled:opacity-40"
+          >
+            {busy ? 'Se salvează…' : 'Salvează modificările'}
+          </button>
+          <DangerButton
+            label="Șterge taskul"
+            onConfirmed={async () => {
+              setBusy(true)
+              try {
+                await deleteTask(task.id)
+                onDeleted()
+              } catch (e) {
+                setError((e as Error).message)
+                setBusy(false)
+              }
+            }}
+          />
+        </div>
+        <p className="text-xs text-[#5B6673]">
+          „Realizat" corectează cantitatea construită (ex. o zi raportată greșit). Istoricul
+          zilnic din Vedere cronologică rămâne neschimbat.
+        </p>
+      </div>
+    </Modal>
+  )
+}
 
 function DeliverableRowView({
   name,
@@ -64,6 +367,7 @@ function TaskCard({
   onChanged: () => void
 }) {
   const [busy, setBusy] = useState(false)
+  const [editing, setEditing] = useState(false)
   const pctDone = taskPct(
     task.deliverables.map((d) => ({
       qtyTotal: Number(d.qty_total),
@@ -112,7 +416,7 @@ function TaskCard({
         <strong className="text-[#0D1A2D]">{pct(pctDone)}</strong> din valoarea taskului realizată
       </p>
 
-      <div className="flex gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {task.status === 'neinceput' && (
           <button
             disabled={busy}
@@ -131,7 +435,37 @@ function TaskCard({
             Marchează finalizat
           </button>
         )}
+        {task.status === 'finalizat' && (
+          <button
+            disabled={busy}
+            onClick={() => changeStatus('in_lucru')}
+            className="rounded-full bg-[#EEECE7] px-4 py-2 text-sm font-medium hover:bg-[#E2DFD8] disabled:opacity-50"
+          >
+            Redeschide taskul
+          </button>
+        )}
+        <button
+          onClick={() => setEditing(true)}
+          className="rounded-full border border-[#E8E8E8] bg-white px-4 py-2 text-sm font-medium text-[#5B6673] hover:border-[#58A834] hover:text-[#0D1A2D]"
+        >
+          Editează
+        </button>
       </div>
+
+      {editing && (
+        <TaskEditModal
+          task={task}
+          onClose={() => setEditing(false)}
+          onSaved={() => {
+            setEditing(false)
+            onChanged()
+          }}
+          onDeleted={() => {
+            setEditing(false)
+            onChanged()
+          }}
+        />
+      )}
     </Card>
   )
 }
@@ -255,13 +589,16 @@ export function JobView({
   onBack,
   onChanged,
   onCronologic,
+  onJobDeleted,
 }: {
   job: JobWithKpis
   projectName: string
   onBack: () => void
   onChanged: () => void
   onCronologic: () => void
+  onJobDeleted: () => void
 }) {
+  const [editing, setEditing] = useState(false)
   const k = job.kpis
   const costOk = costColor(k.costVariance)
   const inLucru = job.tasks.filter((t) => t.status === 'in_lucru').length
@@ -269,9 +606,27 @@ export function JobView({
     <div className="mx-auto max-w-6xl space-y-4 px-6 py-6">
       <BackLink label={projectName} onClick={onBack} />
 
+      {editing && (
+        <JobEditModal
+          job={job}
+          onClose={() => setEditing(false)}
+          onSaved={() => {
+            setEditing(false)
+            onChanged()
+          }}
+          onDeleted={onJobDeleted}
+        />
+      )}
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold">{job.name}</h1>
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => setEditing(true)}
+            className="rounded-full border border-[#E8E8E8] bg-white px-4 py-1.5 text-sm font-medium hover:border-[#58A834]"
+          >
+            Editează
+          </button>
           <button
             onClick={onCronologic}
             className="rounded-full border border-[#E8E8E8] bg-white px-4 py-1.5 text-sm font-medium hover:border-[#58A834]"
@@ -333,6 +688,14 @@ export function JobView({
                       <span className="w-28 shrink-0">{COST_CATEGORY_LABELS[c.category]}</span>
                       <span className="flex-1 truncate text-[#5B6673]">{c.description}</span>
                       <span className="shrink-0 font-medium">{lei(Number(c.amount))}</span>
+                      <DangerButton
+                        label="✕"
+                        armedLabel="Sigur?"
+                        onConfirmed={async () => {
+                          await deleteCostEntry(c.id)
+                          onChanged()
+                        }}
+                      />
                     </div>
                   ))}
               </div>

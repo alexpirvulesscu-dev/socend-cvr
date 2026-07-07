@@ -36,8 +36,11 @@ function TopBar({
   return (
     <header className="sticky top-0 z-10 border-b border-[#E8E8E8]/60 bg-[rgba(250,249,246,0.8)] backdrop-blur-xl">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-2.5">
-        <span className="font-semibold tracking-tight">
-          Socend <span className="text-[#58A834]">CVR</span>
+        <span className="flex items-center gap-2">
+          <img src="/logo-socend.png" alt="Socend Construct" className="h-6 w-auto" />
+          <span className="rounded-md bg-[#DDEDDC] px-1.5 py-0.5 text-xs font-bold tracking-wide text-[#46862A]">
+            CVR
+          </span>
         </span>
         <div className="flex items-center gap-2">
           {/* rolul site vede DOAR Șantier — fără taburi de birou */}
@@ -126,6 +129,11 @@ function OfficeApp({ role, email }: { role: Role; email: string }) {
           project={project}
           onBack={() => setRoute({ view: 'proiecte' })}
           onOpenJob={(jobId) => setRoute({ view: 'job', projectId: project.id, jobId })}
+          onChanged={refetch}
+          onDeleted={() => {
+            refetch()
+            setRoute({ view: 'proiecte' })
+          }}
         />
       )}
       {route.view === 'job' && project && job && (
@@ -137,6 +145,10 @@ function OfficeApp({ role, email }: { role: Role; email: string }) {
           onCronologic={() =>
             setRoute({ view: 'cronologic', projectId: project.id, jobId: job.id })
           }
+          onJobDeleted={() => {
+            refetch()
+            setRoute({ view: 'proiect', projectId: project.id })
+          }}
         />
       )}
       {route.view === 'cronologic' && project && job && (

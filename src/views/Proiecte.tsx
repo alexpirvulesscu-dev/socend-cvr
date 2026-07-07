@@ -175,7 +175,10 @@ export function ProiecteView({
   onOpen: (projectId: string) => void
   onNew: () => void
 }) {
-  const totalContract = projects.reduce((s, p) => s + Number(p.contract_value), 0)
+  // Proiectele finalizate stau în bucket-ul lor, sub cele active
+  const activeProjects = projects.filter((p) => p.active)
+  const doneProjects = projects.filter((p) => !p.active)
+  const totalContract = activeProjects.reduce((s, p) => s + Number(p.contract_value), 0)
 
   return (
     <div className="mx-auto max-w-6xl space-y-4 px-6 py-6">
@@ -183,7 +186,9 @@ export function ProiecteView({
         <div>
           <h1 className="text-2xl font-semibold">Proiecte</h1>
           <p className="mt-0.5 text-sm text-[#5B6673]">
-            {projects.length === 1 ? 'un proiect în derulare' : `${projects.length} proiecte în derulare`}{' '}
+            {activeProjects.length === 1
+              ? 'un proiect în derulare'
+              : `${activeProjects.length} proiecte în derulare`}{' '}
             · contracte semnate {lei(totalContract)}
           </p>
         </div>
@@ -195,20 +200,33 @@ export function ProiecteView({
         </button>
       </div>
 
-      {projects.length === 0 && (
+      {activeProjects.length === 0 && (
         <Card className="py-10 text-center">
-          <p className="font-medium">Niciun proiect încă</p>
+          <p className="font-medium">Niciun proiect activ</p>
           <p className="mt-1 text-sm text-[#5B6673]">
             Apasă „+ Proiect nou" ca să configurezi primul proiect.
           </p>
         </Card>
       )}
 
-      {projects.map((p) => (
+      {activeProjects.map((p) => (
         <ProjectCard key={p.id} p={p} onOpen={() => onOpen(p.id)} />
       ))}
 
-      <CompanyKpis projects={projects} />
+      <CompanyKpis projects={activeProjects} />
+
+      {doneProjects.length > 0 && (
+        <div className="space-y-3 pt-4">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-[#5B6673]">
+            Finalizate · {doneProjects.length}
+          </p>
+          <div className="space-y-3 opacity-70">
+            {doneProjects.map((p) => (
+              <ProjectCard key={p.id} p={p} onOpen={() => onOpen(p.id)} />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

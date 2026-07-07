@@ -2,7 +2,15 @@
 //  - cele 5 KPI-uri cu întrebările exacte din design (01 · Progres ... 05 · Încasări)
 //  - „Flux facturare client": Executat → Aprobat → Facturat → Încasat
 //  - joburile ca și carduri separate, clicabile, cu reacție la hover
+//  - „Editează": date proiect + facturare + finalizare + ștergere (sincron cu P&L)
+import { useState } from 'react'
 import type { ProjectWithKpis } from '../data/projects'
+import {
+  deleteProject,
+  setProjectActive,
+  updateBilling,
+  updateProject,
+} from '../data/mutations'
 import {
   cashColor,
   costColor,
@@ -11,7 +19,166 @@ import {
   type KpiColor,
 } from '../domain/kpi'
 import { compact, dataRo, lei, num, pct } from '../lib/format'
-import { BackLink, Card, KpiPill, NeutralPill, ProgressBar, scheduleText } from '../components/ui'
+import {
+  BackLink,
+  Card,
+  DangerButton,
+  KpiPill,
+  Modal,
+  NeutralPill,
+  ProgressBar,
+  scheduleText,
+} from '../components/ui'
+
+const inputCls =
+  'w-full rounded-xl border border-[#E8E8E8] bg-white px-3 py-2 text-sm outline-none focus:border-[#58A834]'
+const labelCls = 'mb-1 block text-xs font-medium text-[#5B6673]'
+
+/** Modalul de editare: informații proiect, flux de facturare, finalizare, ștergere. */
+function ProjectEditModal({
+  p,
+  onClose,
+  onSaved,
+  onDeleted,
+}: {
+  p: ProjectWithKpis
+  onClose: () => void
+  onSaved: () => void
+  onDeleted: () => void
+}) {
+  const [name, setName] = useState(p.name)
+  const [client, setClient] = useState(p.client ?? '')
+  const [billingMode, setBillingMode] = useState<'stadii_fizice' | 'lunara'>(
+    p.billing_mode === 'lunara' ? 'lunara' : 'stadii_fizice'
+  )
+  const [startDate, setStartDate] = useState(p.start_date ?? '')
+  const [endDate, setEndDate] = useState(p.end_date ?? '')
+  const [depus, setDepus] = useState(String(p.billing.depus))
+  const [certificat, setCertificat] = useState(String(p.billing.certificat))
+  const [facturat, setFacturat] = useState(String(p.billing.facturat))
+  const [incasat, setIncasat] = useState(String(p.billing.incasat))
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const toNum = (s: string) => Number(s.replace(/\./g, '').replace(',', '.')) || 0
+
+  async function run(action: () => Promise<void>, after: () => void) {
+    setBusy(true)
+    setError(null)
+    try {
+      await action()
+      after()
+    } catch (e) {
+      setError((e as Error).message)
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Modal title="Editează proiectul" onClose={onClose}>
+      <div className="space-y-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <label className={labelCls}>Nume proiect</label>
+            <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
+          <div>
+            <label className={labelCls}>Client / beneficiar</label>
+            <input className={inputCls} value={client} onChange={(e) => setClient(e.target.value)} />
+          </div>
+          <div>
+            <label className={labelCls}>Facturare</label>
+            <select
+              className={inputCls}
+              value={billingMode}
+              onChange={(e) => setBillingMode(e.target.value as 'stadii_fizice' | 'lunara')}
+            >
+              <option value="stadii_fizice">Pe stadii fizice</option>
+              <option value="lunara">Lunară</option>
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>Început</label>
+              <input type="date" className={inputCls} value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+            </div>
+            <div>
+              <label className={labelCls}>Sfârșit</label>
+              <input type="date" className={inputCls} value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <p className="mb-2 text-sm font-semibold">Flux facturare client (lei)</p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div>
+              <label className={labelCls}>Executat</label>
+              <input className={inputCls} inputMode="decimal" value={depus} onChange={(e) => setDepus(e.target.value)} />
+            </div>
+            <div>
+              <label className={labelCls}>Aprobat</label>
+              <input className={inputCls} inputMode="decimal" value={certificat} onChange={(e) => setCertificat(e.target.value)} />
+            </div>
+            <div>
+              <label className={labelCls}>Facturat</label>
+              <input className={inputCls} inputMode="decimal" value={facturat} onChange={(e) => setFacturat(e.target.value)} />
+            </div>
+            <div>
+              <label className={labelCls}>Încasat</label>
+              <input className={inputCls} inputMode="decimal" value={incasat} onChange={(e) => setIncasat(e.target.value)} />
+            </div>
+          </div>
+        </div>
+
+        {error && <p className="text-sm text-[#D64545]">Eroare: {error}</p>}
+
+        <div className="flex items-center justify-between border-t border-[#E8E8E8] pt-4">
+          <button
+            disabled={busy}
+            onClick={() =>
+              run(async () => {
+                await updateProject(p.id, p.pnl_proiect_id, {
+                  name: name.trim(),
+                  client: client.trim(),
+                  billingMode,
+                  startDate,
+                  endDate,
+                })
+                await updateBilling(p.id, {
+                  depus: toNum(depus),
+                  certificat: toNum(certificat),
+                  facturat: toNum(facturat),
+                  incasat: toNum(incasat),
+                })
+              }, onSaved)
+            }
+            className="rounded-full bg-[#58A834] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#46862A] disabled:opacity-40"
+          >
+            {busy ? 'Se salvează…' : 'Salvează modificările'}
+          </button>
+          <div className="flex items-center gap-2">
+            <button
+              disabled={busy}
+              onClick={() => run(() => setProjectActive(p.id, p.pnl_proiect_id, !p.active), onSaved)}
+              className="rounded-full bg-[#EEECE7] px-4 py-2 text-sm font-medium hover:bg-[#E2DFD8] disabled:opacity-40"
+            >
+              {p.active ? 'Marchează finalizat' : 'Reactivează proiectul'}
+            </button>
+            <DangerButton
+              label="Șterge proiectul"
+              onConfirmed={() => run(() => deleteProject(p.id, p.pnl_proiect_id), onDeleted)}
+            />
+          </div>
+        </div>
+        <p className="text-xs text-[#5B6673]">
+          Ștergerea elimină definitiv proiectul din CVR (joburi, taskuri, raportări, costuri).
+          În P&L, proiectul legat doar se dezactivează — istoricul de plăți rămâne.
+        </p>
+      </div>
+    </Modal>
+  )
+}
 
 const VALUE_COLOR: Record<KpiColor, string> = {
   good: 'text-[#46862A]',
@@ -116,11 +283,16 @@ export function ProiectView({
   project: p,
   onBack,
   onOpenJob,
+  onChanged,
+  onDeleted,
 }: {
   project: ProjectWithKpis
   onBack: () => void
   onOpenJob: (jobId: string) => void
+  onChanged: () => void
+  onDeleted: () => void
 }) {
+  const [editing, setEditing] = useState(false)
   const k = p.kpis
   const shouldCost = k.costVariance + k.actualCost
 
@@ -134,14 +306,37 @@ export function ProiectView({
     <div className="mx-auto max-w-6xl space-y-4 px-6 py-6">
       <BackLink label="Proiecte" onClick={onBack} />
 
-      <div className="flex items-baseline justify-between gap-3">
-        <h1 className="text-2xl font-semibold leading-tight">{p.name}</h1>
-        <span className="shrink-0 text-sm text-[#5B6673]">{p.client}</span>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-semibold leading-tight">{p.name}</h1>
+          {!p.active && <NeutralPill>Finalizat</NeutralPill>}
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setEditing(true)}
+            className="rounded-full border border-[#E8E8E8] bg-white px-4 py-1.5 text-sm font-medium hover:border-[#58A834]"
+          >
+            Editează
+          </button>
+          <span className="shrink-0 text-sm text-[#5B6673]">{p.client}</span>
+        </div>
       </div>
       <p className="text-sm text-[#5B6673]">
         Contract {lei(p.contract_value)} ·{' '}
         {p.billing_mode === 'lunara' ? 'facturare lunară' : 'facturare pe stadii fizice'}
       </p>
+
+      {editing && (
+        <ProjectEditModal
+          p={p}
+          onClose={() => setEditing(false)}
+          onSaved={() => {
+            setEditing(false)
+            onChanged()
+          }}
+          onDeleted={onDeleted}
+        />
+      )}
 
       {/* Cele 5 KPI-uri — întrebările exacte din design, pe UN rând pe ecrane late */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
