@@ -35,7 +35,7 @@ function TopBar({
     }`
   return (
     <header className="sticky top-0 z-10 border-b border-[#E8E8E8]/60 bg-[rgba(250,249,246,0.8)] backdrop-blur-xl">
-      <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-2.5">
+      <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-2.5">
         <span className="font-semibold tracking-tight">
           Socend <span className="text-[#58A834]">CVR</span>
         </span>

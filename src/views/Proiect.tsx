@@ -131,7 +131,7 @@ export function ProiectView({
       : `${behindJobs.map((j) => j.name.match(/\(([^)]+)\)/)?.[1] ?? j.name).join(', ')} în urmă · restul conform planului`
 
   return (
-    <div className="mx-auto max-w-4xl space-y-4 px-4 py-6">
+    <div className="mx-auto max-w-6xl space-y-4 px-6 py-6">
       <BackLink label="Proiecte" onClick={onBack} />
 
       <div className="flex items-baseline justify-between gap-3">
@@ -143,8 +143,8 @@ export function ProiectView({
         {p.billing_mode === 'lunara' ? 'facturare lunară' : 'facturare pe stadii fizice'}
       </p>
 
-      {/* Cele 5 KPI-uri — întrebările exacte din design */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {/* Cele 5 KPI-uri — întrebările exacte din design, pe UN rând pe ecrane late */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <KpiCard
           eyebrow="01 · Progres"
           question="Cât s-a construit?"

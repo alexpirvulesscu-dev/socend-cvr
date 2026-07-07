@@ -178,7 +178,7 @@ export function ProiecteView({
   const totalContract = projects.reduce((s, p) => s + Number(p.contract_value), 0)
 
   return (
-    <div className="mx-auto max-w-4xl space-y-4 px-4 py-6">
+    <div className="mx-auto max-w-6xl space-y-4 px-6 py-6">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">Proiecte</h1>

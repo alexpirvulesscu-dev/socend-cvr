@@ -202,7 +202,7 @@ function AdaugaCost({ jobId, onAdded }: { jobId: string; onAdded: () => void }) 
   return (
     <form onSubmit={submit} className="mt-4 space-y-3 border-t border-[#E8E8E8] pt-4">
       <h4 className="text-sm font-semibold">Adaugă cost</h4>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3">
         <select
           value={category}
           onChange={(e) => setCategory(e.target.value as CostCategory)}
@@ -227,7 +227,7 @@ function AdaugaCost({ jobId, onAdded }: { jobId: string; onAdded: () => void }) 
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Descriere"
-          className={`${inputCls} col-span-2 sm:col-span-1`}
+          className={inputCls}
           aria-label="Descriere"
         />
         <input
@@ -266,7 +266,7 @@ export function JobView({
   const costOk = costColor(k.costVariance)
   const inLucru = job.tasks.filter((t) => t.status === 'in_lucru').length
   return (
-    <div className="mx-auto max-w-4xl space-y-4 px-4 py-6">
+    <div className="mx-auto max-w-6xl space-y-4 px-6 py-6">
       <BackLink label={projectName} onClick={onBack} />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -302,40 +302,45 @@ export function JobView({
         <span className="shrink-0 text-sm font-semibold">{pct(k.donePct)}</span>
       </div>
 
-      <h3 className="pt-2 text-base font-semibold">Taskuri</h3>
-      <div className="space-y-3">
-        {job.tasks.length === 0 && (
+      {/* Pe ecrane late: taskurile pe stânga, banii (buget + costuri) pe dreapta */}
+      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[1fr_400px]">
+        <div className="space-y-3">
+          <h3 className="pt-2 text-base font-semibold">Taskuri</h3>
+          {job.tasks.length === 0 && (
+            <Card>
+              <p className="text-sm text-[#5B6673]">Jobul nu are încă taskuri configurate.</p>
+            </Card>
+          )}
+          {job.tasks.map((t, i) => (
+            <TaskCard key={t.id} task={t} index={i} onChanged={onChanged} />
+          ))}
+        </div>
+
+        <div className="space-y-4 xl:sticky xl:top-16">
+          <BugetVsCost job={job} />
+
           <Card>
-            <p className="text-sm text-[#5B6673]">Jobul nu are încă taskuri configurate.</p>
+            <h3 className="mb-3 text-base font-semibold">Costuri înregistrate</h3>
+            {job.cvr_cost_entries.length === 0 ? (
+              <p className="text-sm text-[#5B6673]">Niciun cost înregistrat încă.</p>
+            ) : (
+              <div className="divide-y divide-[#F3F1EC]">
+                {[...job.cvr_cost_entries]
+                  .sort((a, b) => (a.entry_date < b.entry_date ? 1 : -1))
+                  .map((c) => (
+                    <div key={c.id} className="flex items-center justify-between gap-3 py-2 text-sm">
+                      <span className="w-24 shrink-0 text-[#5B6673]">{dataRo(c.entry_date)}</span>
+                      <span className="w-28 shrink-0">{COST_CATEGORY_LABELS[c.category]}</span>
+                      <span className="flex-1 truncate text-[#5B6673]">{c.description}</span>
+                      <span className="shrink-0 font-medium">{lei(Number(c.amount))}</span>
+                    </div>
+                  ))}
+              </div>
+            )}
+            <AdaugaCost jobId={job.id} onAdded={onChanged} />
           </Card>
-        )}
-        {job.tasks.map((t, i) => (
-          <TaskCard key={t.id} task={t} index={i} onChanged={onChanged} />
-        ))}
+        </div>
       </div>
-
-      <BugetVsCost job={job} />
-
-      <Card>
-        <h3 className="mb-3 text-base font-semibold">Costuri înregistrate</h3>
-        {job.cvr_cost_entries.length === 0 ? (
-          <p className="text-sm text-[#5B6673]">Niciun cost înregistrat încă.</p>
-        ) : (
-          <div className="divide-y divide-[#F3F1EC]">
-            {[...job.cvr_cost_entries]
-              .sort((a, b) => (a.entry_date < b.entry_date ? 1 : -1))
-              .map((c) => (
-                <div key={c.id} className="flex items-center justify-between gap-3 py-2 text-sm">
-                  <span className="w-24 shrink-0 text-[#5B6673]">{dataRo(c.entry_date)}</span>
-                  <span className="w-32 shrink-0">{COST_CATEGORY_LABELS[c.category]}</span>
-                  <span className="flex-1 truncate text-[#5B6673]">{c.description}</span>
-                  <span className="shrink-0 font-medium">{lei(Number(c.amount))}</span>
-                </div>
-              ))}
-          </div>
-        )}
-        <AdaugaCost jobId={job.id} onAdded={onChanged} />
-      </Card>
     </div>
   )
 }
