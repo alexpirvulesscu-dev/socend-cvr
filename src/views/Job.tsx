@@ -9,9 +9,17 @@ import {
   type TaskRow,
 } from '../data/projects'
 import { addCostEntry, setTaskStatus } from '../data/mutations'
-import { deliverablePct, scheduleColor, taskPct } from '../domain/kpi'
-import { dataRo, lei, num, pct } from '../lib/format'
-import { BackLink, Card, KpiPill, ProgressBar, StatusPill, scheduleText } from '../components/ui'
+import { costColor, deliverablePct, scheduleColor, taskPct } from '../domain/kpi'
+import { compact, dataRo, lei, num, pct } from '../lib/format'
+import {
+  BackLink,
+  Card,
+  KpiPill,
+  NeutralPill,
+  ProgressBar,
+  StatusPill,
+  scheduleText,
+} from '../components/ui'
 
 function DeliverableRowView({
   name,
@@ -26,23 +34,35 @@ function DeliverableRowView({
   total: number
   weight: number
 }) {
+  const p = deliverablePct(done, total)
   return (
-    <div className="flex items-center gap-3 py-1.5">
-      <span className="w-14 shrink-0">
-        <span className="inline-flex rounded-full bg-[#EEECE7] px-2 py-0.5 text-xs font-medium text-[#5B6673]">
+    <div className="flex items-center gap-3 py-2">
+      <span className="flex-1 text-sm">
+        {name}{' '}
+        <span className="ml-1 inline-flex rounded-full bg-[#EEECE7] px-2 py-0.5 text-xs font-medium text-[#5B6673]">
           {num(weight)}%
         </span>
       </span>
-      <span className="flex-1 text-sm">{name}</span>
-      <ProgressBar donePct={deliverablePct(done, total)} className="w-24 shrink-0" />
-      <span className="w-28 shrink-0 text-right text-sm text-[#5B6673]">
-        {num(done)} / {num(total)} {um}
+      <ProgressBar donePct={p} className="w-28 shrink-0" />
+      <span className="w-28 shrink-0 text-right">
+        <span className="block text-sm font-semibold">
+          {num(done)} / {num(total)} {um}
+        </span>
+        <span className="block text-xs text-[#5B6673]">{pct(p, 0)}</span>
       </span>
     </div>
   )
 }
 
-function TaskCard({ task, onChanged }: { task: TaskRow; onChanged: () => void }) {
+function TaskCard({
+  task,
+  index,
+  onChanged,
+}: {
+  task: TaskRow
+  index: number
+  onChanged: () => void
+}) {
   const [busy, setBusy] = useState(false)
   const pctDone = taskPct(
     task.deliverables.map((d) => ({
@@ -65,10 +85,13 @@ function TaskCard({ task, onChanged }: { task: TaskRow; onChanged: () => void })
   return (
     <Card className="space-y-3">
       <div className="flex items-center justify-between gap-3">
-        <h4 className="font-medium leading-tight">{task.name}</h4>
+        <h4 className="font-semibold leading-tight">
+          <span className="mr-1 text-[#5B6673]">{String(index + 1).padStart(2, '0')} ·</span>{' '}
+          {task.name}
+        </h4>
         <div className="flex shrink-0 items-center gap-2">
-          <span className="text-sm text-[#5B6673]">{lei(task.value)}</span>
           <StatusPill status={task.status} />
+          <span className="text-sm font-semibold">{lei(task.value)}</span>
         </div>
       </div>
 
@@ -231,30 +254,52 @@ export function JobView({
   projectName,
   onBack,
   onChanged,
+  onCronologic,
 }: {
   job: JobWithKpis
   projectName: string
   onBack: () => void
   onChanged: () => void
+  onCronologic: () => void
 }) {
   const k = job.kpis
+  const costOk = costColor(k.costVariance)
+  const inLucru = job.tasks.filter((t) => t.status === 'in_lucru').length
   return (
     <div className="mx-auto max-w-4xl space-y-4 px-4 py-6">
       <BackLink label={projectName} onClick={onBack} />
 
-      <div className="flex items-baseline justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold">{job.name}</h1>
-        <span className="text-sm text-[#5B6673]">
-          {dataRo(job.start_date)} → {dataRo(job.end_date)}
-        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={onCronologic}
+            className="rounded-full border border-[#E8E8E8] bg-white px-4 py-1.5 text-sm font-medium hover:border-[#58A834]"
+          >
+            Vedere cronologică
+          </button>
+          <KpiPill color={scheduleColor(k.behindDays)}>{scheduleText(k.behindDays)}</KpiPill>
+          <KpiPill color={costOk}>
+            {costOk === 'good'
+              ? `${compact(k.costVariance)} lei sub buget`
+              : `${compact(-k.costVariance)} lei peste buget`}
+          </KpiPill>
+          <NeutralPill>
+            {inLucru === 0
+              ? 'niciun task în lucru'
+              : inLucru === 1
+                ? 'un task în lucru'
+                : `${inLucru} taskuri în lucru`}
+          </NeutralPill>
+        </div>
       </div>
+      <p className="text-sm text-[#5B6673]">
+        {dataRo(job.start_date)} – {dataRo(job.end_date)} · Valoare {lei(k.value)}
+      </p>
 
       <div className="flex items-center gap-3">
         <ProgressBar donePct={k.donePct} planPct={k.planPct} className="flex-1" />
-        <span className="shrink-0 text-sm text-[#5B6673]">
-          {pct(k.donePct)} din {lei(k.value)}
-        </span>
-        <KpiPill color={scheduleColor(k.behindDays)}>{scheduleText(k.behindDays)}</KpiPill>
+        <span className="shrink-0 text-sm font-semibold">{pct(k.donePct)}</span>
       </div>
 
       <h3 className="pt-2 text-base font-semibold">Taskuri</h3>
@@ -264,8 +309,8 @@ export function JobView({
             <p className="text-sm text-[#5B6673]">Jobul nu are încă taskuri configurate.</p>
           </Card>
         )}
-        {job.tasks.map((t) => (
-          <TaskCard key={t.id} task={t} onChanged={onChanged} />
+        {job.tasks.map((t, i) => (
+          <TaskCard key={t.id} task={t} index={i} onChanged={onChanged} />
         ))}
       </div>
 

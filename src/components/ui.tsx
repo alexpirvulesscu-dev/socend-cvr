@@ -88,11 +88,20 @@ export function ProgressBar({
   )
 }
 
-/** Textul pastilei de grafic: „în urmă 3,6 zile" / „în avans 2 zile" / „în grafic". */
+/** Textul pastilei de grafic, ca în design: „4 zile în urmă" / „2 zile în avans" / „Conform planului". */
 export function scheduleText(behindDays: number): string {
-  if (behindDays >= 0.5) return `în urmă ${zile(behindDays)}`
-  if (behindDays <= -0.5) return `în avans ${zile(behindDays)}`
-  return 'în grafic'
+  if (behindDays >= 0.5) return `${zile(behindDays)} în urmă`
+  if (behindDays <= -0.5) return `${zile(behindDays)} în avans`
+  return 'Conform planului'
+}
+
+/** Pastilă neutră (gri), ca „Marjă 23,6%" sau „2 taskuri în lucru" din design. */
+export function NeutralPill({ children }: { children: ReactNode }) {
+  return (
+    <span className="inline-flex items-center whitespace-nowrap rounded-full bg-[#EEECE7] px-2.5 py-1 text-xs font-medium text-[#5B6673]">
+      {children}
+    </span>
+  )
 }
 
 /** Săgeată de întoarcere pentru ecranele de detaliu. */

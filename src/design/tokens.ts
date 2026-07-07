@@ -8,9 +8,12 @@ export const colors = {
   card: '#FFFFFF', // carduri albe, fără border vizibil
   border: '#E8E8E8', // separatoare discrete, unde chiar e nevoie
 
-  // Navy închis — DOAR pe header-ul de zi din Șantier
+  // Navy închis — text principal
   dark: '#0D1A2D',
   darkAlt: '#14263F',
+  // Header-ul de zi din Șantier: teal (cerut de Alex la review, în locul navy-ului)
+  santierHeader: '#115468',
+  santierHeaderAlt: '#0E4556',
   // Galben de accent — DOAR pe header-ul de zi din Șantier
   santierAccent: '#E2E04A',
 

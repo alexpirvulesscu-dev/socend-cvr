@@ -7,12 +7,14 @@ import { JobView } from './views/Job'
 import { SantierView } from './views/Santier'
 import { ConfigurareView } from './views/Configurare'
 import { LoginView } from './views/Login'
+import { CronologicView } from './views/Cronologic'
 
 // Navigare prin stare (fără router), ca în celelalte aplicații Socend.
 type Route =
   | { view: 'proiecte' }
   | { view: 'proiect'; projectId: string }
   | { view: 'job'; projectId: string; jobId: string }
+  | { view: 'cronologic'; projectId: string; jobId: string }
   | { view: 'santier' }
   | { view: 'config' }
 
@@ -28,13 +30,15 @@ function TopBar({
   email: string
 }) {
   const tab = (active: boolean) =>
-    `rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
-      active ? 'bg-[#0D1A2D] text-white' : 'text-[#5B6673] hover:text-[#0D1A2D]'
+    `rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
+      active ? 'bg-[#DDEDDC] text-[#0D1A2D]' : 'text-[#5B6673] hover:text-[#0D1A2D]'
     }`
   return (
     <header className="sticky top-0 z-10 border-b border-[#E8E8E8]/60 bg-[rgba(250,249,246,0.8)] backdrop-blur-xl">
       <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-2.5">
-        <span className="font-semibold tracking-tight">Socend CVR</span>
+        <span className="font-semibold tracking-tight">
+          Socend <span className="text-[#58A834]">CVR</span>
+        </span>
         <div className="flex items-center gap-2">
           {/* rolul site vede DOAR Șantier — fără taburi de birou */}
           {role !== 'site' && (
@@ -89,11 +93,13 @@ function OfficeApp({ role, email }: { role: Role; email: string }) {
   }
 
   const project =
-    route.view === 'proiect' || route.view === 'job'
+    route.view === 'proiect' || route.view === 'job' || route.view === 'cronologic'
       ? projects.find((p) => p.id === route.projectId)
       : undefined
   const job =
-    route.view === 'job' && project ? project.jobs.find((j) => j.id === route.jobId) : undefined
+    (route.view === 'job' || route.view === 'cronologic') && project
+      ? project.jobs.find((j) => j.id === route.jobId)
+      : undefined
 
   return (
     <>
@@ -128,6 +134,15 @@ function OfficeApp({ role, email }: { role: Role; email: string }) {
           projectName={project.name}
           onBack={() => setRoute({ view: 'proiect', projectId: project.id })}
           onChanged={refetch}
+          onCronologic={() =>
+            setRoute({ view: 'cronologic', projectId: project.id, jobId: job.id })
+          }
+        />
+      )}
+      {route.view === 'cronologic' && project && job && (
+        <CronologicView
+          job={job}
+          onBack={() => setRoute({ view: 'job', projectId: project.id, jobId: job.id })}
         />
       )}
     </>

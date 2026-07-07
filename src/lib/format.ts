@@ -19,6 +19,24 @@ export function pct(fraction: number, decimals: 0 | 1 = 1): string {
   return `${num(fraction * 100, decimals)}%`
 }
 
+/**
+ * Format compact ca în design: 1.580.000 → „1,58M" · 402.000 → „402k" · 5.200 → „5.200".
+ * Semnul se păstrează („+11k" se obține cu prefix la apelare).
+ */
+export function compact(n: number): string {
+  const abs = Math.abs(n)
+  const sign = n < 0 ? '−' : ''
+  if (abs >= 1_000_000) {
+    const v = new Intl.NumberFormat('ro-RO', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(abs / 1_000_000)
+    return `${sign}${v}M`
+  }
+  if (abs >= 10_000) return `${sign}${nf0.format(Math.round(abs / 1000))}k`
+  return `${sign}${nf0.format(abs)}`
+}
+
 /** 3.58 → „3,6 zile" (o zecimală) */
 export function zile(n: number): string {
   const abs = Math.abs(n)
