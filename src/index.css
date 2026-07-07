@@ -1,0 +1,15 @@
+@import "tailwindcss";
+
+/* Fundalul aplicației și fontul de bază — vezi src/design/tokens.ts */
+:root {
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
+    Roboto, sans-serif;
+}
+
+body {
+  background-color: #faf9f6;
+  color: #0d1a2d;
+  -webkit-font-smoothing: antialiased;
+  /* Cifre tabulare peste tot: numerele se aliniază vertical în liste și KPI-uri */
+  font-variant-numeric: tabular-nums;
+}
