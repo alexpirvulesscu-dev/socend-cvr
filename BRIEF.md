@@ -56,7 +56,7 @@ Single-page React app → Supabase (Postgres + Auth + RLS). Shared skeleton tabl
 - [x] Screenshot every screen at 390px and 1280px into `/qa`, compare against the design file, fix visual gaps (acceptance: all screenshots present — 18 capturi: 6 ecrane × 2 lățimi + stări goale/validare/succes; comparația cu fișierul de design rămâne blocată pe /design-login) · `d942cec`
 
 ### Phase 8: Ship
-- [ ] Update `BRIEF.md` checkboxes and `DECISIONS.md`, push `feature/cvr-v1`, open PR with `gh pr create` including summary + `/qa` screenshots, then STOP (acceptance: PR URL printed; nothing merged)
+- [x] Update `BRIEF.md` checkboxes and `DECISIONS.md`, push `feature/cvr-v1`, open PR with `gh pr create` including summary + `/qa` screenshots, then STOP (acceptance: PR URL printed; nothing merged) — repo: https://github.com/alexpirvulesscu-dev/socend-cvr
 
 ## External Services
 - Supabase shared project `rvqsjxgybqbphrnhhyfz` (exists; keys via Supabase MCP)
