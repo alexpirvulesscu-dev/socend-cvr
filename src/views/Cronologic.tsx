@@ -1,11 +1,12 @@
-// „Vedere cronologică" — matricea pe zile a unui job, ca în design:
-// coloane = zilele lunii (duminicile stinse, sâmbetele marcate), rânduri =
-// taskuri → livrabile + rândul „Oameni · Pontaj", coloane de total și rămas.
+// „Vedere cronologică" — matricea pe zile a unui job, pe TOATĂ lățimea paginii
+// (fără scroll orizontal pe desktop). Coloane de totaluri extinse: luna afișată,
+// REALIZAT (de la început) vs TOTAL, rămas și procent — plus o bandă de
+// indicatori (oameni-zile, zile active, medie) pentru decizii rapide.
 import { useMemo, useState } from 'react'
 import type { JobWithKpis } from '../data/projects'
 import { useMonthData } from '../data/cronologic'
-import { num } from '../lib/format'
-import { BackLink } from '../components/ui'
+import { num, pct } from '../lib/format'
+import { BackLink, Card } from '../components/ui'
 
 const MONTHS_RO = [
   'ianuarie', 'februarie', 'martie', 'aprilie', 'mai', 'iunie',
@@ -23,6 +24,16 @@ function LegendDot({ color, label }: { color: string; label: string }) {
       <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
       {label}
     </span>
+  )
+}
+
+function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
+  return (
+    <Card className="space-y-0.5 !p-4">
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-[#5B6673]">{label}</p>
+      <p className="text-xl font-semibold tracking-tight">{value}</p>
+      {hint && <p className="text-xs text-[#5B6673]">{hint}</p>}
+    </Card>
   )
 }
 
@@ -67,14 +78,48 @@ export function CronologicView({
     setMonth(next.getMonth())
   }
 
-  // stiluri de celulă
-  const cellBase = 'h-9 min-w-9 px-1 text-center text-xs tabular-nums'
-  const qtyCell = `${cellBase} bg-[#DDEDDC] font-medium text-[#2F6B1F]`
-  const workersCell = `${cellBase} bg-[#E3EDF3] text-[#115468]`
-  const emptyCell = `${cellBase} text-[#C9C5BC]`
+  // ── Indicatorii lunii (pentru banda de decizie) ──
+  const stats = useMemo(() => {
+    if (!data) return null
+    let manDaysMonth = 0
+    const activeDates = new Set<string>()
+    for (const t of job.tasks) {
+      const byDay = data.workers[t.id] ?? {}
+      for (const [date, w] of Object.entries(byDay)) {
+        manDaysMonth += w
+        if (w > 0) activeDates.add(date)
+      }
+    }
+    let activeDeliverables = 0
+    for (const dl of job.tasks.flatMap((t) => t.deliverables)) {
+      const byDay = data.qty[dl.id] ?? {}
+      const sum = Object.values(byDay).reduce((s, v) => s + v, 0)
+      if (sum > 0) {
+        activeDeliverables++
+        for (const [date, v] of Object.entries(byDay)) if (v > 0) activeDates.add(date)
+      }
+    }
+    const manDaysAll = Object.values(data.allTimeWorkers).reduce((s, v) => s + v, 0)
+    return {
+      manDaysMonth,
+      manDaysAll,
+      activeDays: activeDates.size,
+      avgPerDay: activeDates.size > 0 ? manDaysMonth / activeDates.size : 0,
+      activeDeliverables,
+      totalDeliverables: deliverableIds.length,
+    }
+  }, [data, job, deliverableIds])
+
+  // stiluri de celulă — compacte, ca totul să încapă pe lățimea paginii
+  const dayCell = 'h-8 px-0 text-center text-[11px] tabular-nums'
+  const qtyCell = `${dayCell} bg-[#DDEDDC] font-medium text-[#2F6B1F]`
+  const workersCell = `${dayCell} bg-[#E3EDF3] text-[#115468]`
+  const emptyCell = `${dayCell} text-[#D8D4CB]`
+  const totalCell = 'px-1 text-center text-xs font-semibold tabular-nums'
+  const totalMuted = 'px-1 text-center text-xs tabular-nums text-[#5B6673]'
 
   return (
-    <div className="mx-auto max-w-7xl space-y-4 px-4 py-6">
+    <div className="w-full space-y-4 px-6 py-6">
       <BackLink label={job.name} onClick={onBack} />
 
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -115,19 +160,62 @@ export function CronologicView({
       {error && <p className="text-sm text-[#D64545]">Eroare: {error}</p>}
       {loading && <p className="text-sm text-[#5B6673]">Se încarcă…</p>}
 
+      {/* Banda de indicatori — numerele de decizie ale lunii */}
+      {stats && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          <Stat
+            label="Oameni-zile · luna asta"
+            value={num(stats.manDaysMonth)}
+            hint="suma oamenilor din Pontaj, zi cu zi"
+          />
+          <Stat
+            label="Oameni-zile · de la început"
+            value={num(stats.manDaysAll)}
+            hint="pe tot jobul, toate lunile"
+          />
+          <Stat
+            label="Zile active · luna asta"
+            value={num(stats.activeDays)}
+            hint="zile cu oameni sau cantități raportate"
+          />
+          <Stat
+            label="Medie oameni / zi activă"
+            value={num(stats.avgPerDay, 1)}
+            hint="oameni-zile ÷ zile active"
+          />
+          <Stat
+            label="Livrabile lucrate · luna asta"
+            value={`${num(stats.activeDeliverables)} din ${num(stats.totalDeliverables)}`}
+            hint="livrabile cu cantități raportate"
+          />
+        </div>
+      )}
+
       {data && (
         <div className="overflow-x-auto rounded-[20px] bg-white shadow-[0_1px_2px_rgba(13,26,45,0.04),0_8px_24px_rgba(13,26,45,0.06)]">
-          <table className="w-full border-collapse">
+          {/* min-w: sub ~1080px tabelul derulează; peste, umple TOATĂ lățimea paginii */}
+          <table className="w-full min-w-[1080px] table-fixed border-collapse">
+            <colgroup>
+              <col className="w-44" />
+              {days.map(({ d }) => (
+                <col key={d} />
+              ))}
+              <col className="w-14" />
+              <col className="w-16" />
+              <col className="w-14" />
+              <col className="w-14" />
+              <col className="w-12" />
+            </colgroup>
             <thead>
               <tr>
-                <th className="sticky left-0 z-[1] min-w-52 bg-white px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-[#5B6673]">
+                <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-[#5B6673]">
                   Task / livrabil
                 </th>
                 {days.map(({ d, dow }) => (
-                  <th key={d} className={`${cellBase} py-2 font-medium ${dow === 0 ? 'text-[#C9C5BC]' : ''}`}>
-                    <span className="block text-sm font-semibold">{d}</span>
+                  <th key={d} className={`${dayCell} py-1.5 font-medium ${dow === 0 ? 'text-[#C9C5BC]' : ''}`}>
+                    <span className="block text-xs font-semibold">{d}</span>
                     <span
-                      className={`block text-[10px] ${
+                      className={`block text-[9px] ${
                         dow === 6 ? 'text-[#A87400]' : dow === 0 ? 'text-[#C9C5BC]' : 'text-[#5B6673]'
                       }`}
                     >
@@ -135,33 +223,45 @@ export function CronologicView({
                     </span>
                   </th>
                 ))}
-                <th className="min-w-20 border-l border-[#E8E8E8] px-2 text-center text-[11px] font-semibold uppercase tracking-wider text-[#5B6673]">
-                  Total lună
+                <th className="border-l border-[#E8E8E8] px-1 text-center text-[10px] font-semibold uppercase tracking-wide text-[#5B6673]">
+                  Lună
                 </th>
-                <th className="min-w-16 px-2 text-center text-[11px] font-semibold uppercase tracking-wider text-[#5B6673]">
+                <th className="px-1 text-center text-[10px] font-semibold uppercase tracking-wide text-[#5B6673]">
+                  Realizat
+                </th>
+                <th className="px-1 text-center text-[10px] font-semibold uppercase tracking-wide text-[#5B6673]">
+                  Total
+                </th>
+                <th className="px-1 text-center text-[10px] font-semibold uppercase tracking-wide text-[#5B6673]">
                   Rămas
+                </th>
+                <th className="px-1 text-center text-[10px] font-semibold uppercase tracking-wide text-[#5B6673]">
+                  %
                 </th>
               </tr>
             </thead>
             <tbody>
               {job.tasks.map((t, ti) => {
                 const workersByDay = data.workers[t.id] ?? {}
-                const workersTotal = days.reduce((s, { date }) => s + (workersByDay[date] ?? 0), 0)
+                const workersMonth = days.reduce((s, { date }) => s + (workersByDay[date] ?? 0), 0)
+                const workersAll = data.allTimeWorkers[t.id] ?? 0
                 return (
                   <FragmentRows
                     key={t.id}
                     taskLabel={`${String(ti + 1).padStart(2, '0')} · ${t.name}`}
+                    colSpan={days.length + 6}
                     rows={
                       <>
                         {t.deliverables.map((dl) => {
                           const byDay = data.qty[dl.id] ?? {}
                           const monthTotal = days.reduce((s, { date }) => s + (byDay[date] ?? 0), 0)
-                          const remaining = Math.max(0, Number(dl.qty_total) - Number(dl.qty_done))
+                          const done = Number(dl.qty_done)
+                          const total = Number(dl.qty_total)
+                          const remaining = Math.max(0, total - done)
                           return (
                             <tr key={dl.id} className="border-t border-[#F3F1EC]">
-                              <td className="sticky left-0 z-[1] bg-white px-4 py-1.5 text-sm">
-                                {dl.name}{' '}
-                                <span className="text-xs text-[#5B6673]">{dl.um}</span>
+                              <td className="truncate px-3 py-1 text-xs">
+                                {dl.name} <span className="text-[10px] text-[#5B6673]">{dl.um}</span>
                               </td>
                               {days.map(({ date, dow }) => {
                                 const v = byDay[date]
@@ -171,17 +271,20 @@ export function CronologicView({
                                   </td>
                                 )
                               })}
-                              <td className="border-l border-[#E8E8E8] px-2 text-center text-sm font-semibold tabular-nums">
+                              <td className={`border-l border-[#E8E8E8] ${totalCell}`}>
                                 {monthTotal > 0 ? num(monthTotal) : '–'}
                               </td>
-                              <td className="px-2 text-center text-sm tabular-nums text-[#5B6673]">
-                                {num(remaining)}
+                              <td className={`${totalCell} text-[#2F6B1F]`}>{num(done)}</td>
+                              <td className={totalMuted}>{num(total)}</td>
+                              <td className={totalMuted}>{num(remaining)}</td>
+                              <td className={totalMuted}>
+                                {total > 0 ? pct(done / total, 0) : '–'}
                               </td>
                             </tr>
                           )
                         })}
                         <tr className="border-t border-[#F3F1EC]">
-                          <td className="sticky left-0 z-[1] bg-white px-4 py-1.5 text-sm text-[#115468]">
+                          <td className="truncate px-3 py-1 text-xs text-[#115468]">
                             Oameni · Pontaj
                           </td>
                           {days.map(({ date, dow }) => {
@@ -192,14 +295,18 @@ export function CronologicView({
                               </td>
                             )
                           })}
-                          <td className="border-l border-[#E8E8E8] px-2 text-center text-sm font-semibold tabular-nums text-[#115468]">
-                            {workersTotal > 0 ? num(workersTotal) : '–'}
+                          <td className={`border-l border-[#E8E8E8] ${totalCell} text-[#115468]`}>
+                            {workersMonth > 0 ? num(workersMonth) : '–'}
                           </td>
-                          <td className="px-2 text-center text-sm text-[#C9C5BC]"></td>
+                          <td className={`${totalCell} text-[#115468]`}>
+                            {workersAll > 0 ? num(workersAll) : '–'}
+                          </td>
+                          <td className={totalMuted}>–</td>
+                          <td className={totalMuted}>–</td>
+                          <td className={totalMuted}>–</td>
                         </tr>
                       </>
                     }
-                    colSpan={days.length + 3}
                   />
                 )
               })}
@@ -207,11 +314,18 @@ export function CronologicView({
           </table>
         </div>
       )}
+
+      <p className="text-xs text-[#5B6673]">
+        Coloanele de totaluri: <strong>Lună</strong> = raportat în luna afișată ·{' '}
+        <strong>Realizat</strong> = de la începutul jobului (la „Oameni": total oameni-zile) ·{' '}
+        <strong>Total</strong> = cantitatea contractată · <strong>Rămas</strong> = de construit ·{' '}
+        <strong>%</strong> = realizat din total.
+      </p>
     </div>
   )
 }
 
-/** Banda de secțiune a taskului + rândurile lui (nu există fragment cu key pe <tbody>). */
+/** Banda de secțiune a taskului + rândurile lui. */
 function FragmentRows({
   taskLabel,
   rows,
@@ -226,7 +340,7 @@ function FragmentRows({
       <tr>
         <td
           colSpan={colSpan}
-          className="sticky left-0 border-t border-[#E8E8E8] bg-[#FAF9F6] px-4 py-2 text-sm font-semibold"
+          className="border-t border-[#E8E8E8] bg-[#FAF9F6] px-3 py-1.5 text-sm font-semibold"
         >
           {taskLabel}
         </td>

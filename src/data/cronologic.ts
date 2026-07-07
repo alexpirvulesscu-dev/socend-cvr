@@ -12,6 +12,8 @@ export type WorkersByDay = Record<string, Record<string, number>>
 export interface MonthData {
   qty: QtyByDay
   workers: WorkersByDay
+  /** oameni-zile pe task, DE LA ÎNCEPUTUL lucrării (nu doar luna afișată) */
+  allTimeWorkers: Record<string, number>
 }
 
 export async function fetchMonthData(
@@ -20,7 +22,7 @@ export async function fetchMonthData(
   monthStart: string,
   monthEnd: string
 ): Promise<MonthData> {
-  const [entriesRes, labourRes] = await Promise.all([
+  const [entriesRes, labourRes, allLabourRes] = await Promise.all([
     supabase
       .from('cvr_daily_entries')
       .select('deliverable_id, entry_date, qty')
@@ -33,9 +35,11 @@ export async function fetchMonthData(
       .in('task_id', taskIds)
       .gte('work_date', monthStart)
       .lte('work_date', monthEnd),
+    supabase.from('labour_daily').select('task_id, workers').in('task_id', taskIds),
   ])
   if (entriesRes.error) throw entriesRes.error
   if (labourRes.error) throw labourRes.error
+  if (allLabourRes.error) throw allLabourRes.error
 
   const qty: QtyByDay = {}
   for (const e of entriesRes.data ?? []) {
@@ -50,7 +54,13 @@ export async function fetchMonthData(
     byDay[l.work_date as string] = Number(l.workers)
   }
 
-  return { qty, workers }
+  const allTimeWorkers: Record<string, number> = {}
+  for (const l of allLabourRes.data ?? []) {
+    allTimeWorkers[l.task_id as string] =
+      (allTimeWorkers[l.task_id as string] ?? 0) + Number(l.workers)
+  }
+
+  return { qty, workers, allTimeWorkers }
 }
 
 export function useMonthData(
