@@ -1,8 +1,12 @@
-// Ecranul Proiecte, 1:1 după design:
-//  - antet cu „N proiecte în derulare · contracte semnate X lei"
-//  - un card pe proiect (valoare contract la dreapta, bară + reper plan, pastile)
-//  - dedesubt, banda „COMPANIE · TOATE PROIECTELE" cu cele 5 KPI-uri pe un rând
+// Ecranul Proiecte:
+//  - lista principală (proiectele active mari), ordonabilă prin DRAG & DROP
+//  - banda „Companie · toate proiectele" cu cele 5 KPI-uri (doar activele mari)
+//  - cardul agregat „Proiecte mici" (finalizare 0–100 + câștig/pierdere), cu
+//    lista proiectelor mici ascunsă sub un buton
+//  - „Finalizate" ascunse sub un buton, ca să nu polueze pagina
+import { useEffect, useMemo, useState } from 'react'
 import type { ProjectWithKpis } from '../data/projects'
+import { setProjectsOrder } from '../data/mutations'
 import {
   cashColor,
   costColor,
@@ -35,7 +39,8 @@ function ProjectCard({ p, onOpen }: { p: ProjectWithKpis; onOpen: () => void }) 
         <div>
           <h2 className="text-lg font-semibold leading-tight">{p.name}</h2>
           <p className="mt-0.5 text-sm text-[#5B6673]">
-            {p.client} · {billingLabel(p.billing_mode)}
+            {p.client ? `${p.client} · ` : ''}
+            {billingLabel(p.billing_mode)}
           </p>
         </div>
         <div className="shrink-0 text-right">
@@ -89,13 +94,13 @@ function CompanyKpiCard({
   )
 }
 
-/** Banda cu cele 5 KPI-uri agregate pe toată compania (sub proiecte, ca în design). */
+/** Banda cu cele 5 KPI-uri agregate pe proiectele active mari. */
 function CompanyKpis({ projects }: { projects: ProjectWithKpis[] }) {
   const totalContract = projects.reduce((s, p) => s + Number(p.contract_value), 0)
   const totalEV = projects.reduce((s, p) => s + p.kpis.ev, 0)
   const totalCost = projects.reduce((s, p) => s + p.kpis.actualCost, 0)
   const totalCostVar = projects.reduce((s, p) => s + p.kpis.costVariance, 0)
-  const shouldCost = totalCostVar + totalCost // bugetul câștigat = variație + cost real
+  const shouldCost = totalCostVar + totalCost
   const totalFacturat = projects.reduce((s, p) => s + p.billing.facturat, 0)
   const totalIncasat = projects.reduce((s, p) => s + p.billing.incasat, 0)
   const totalWip = projects.reduce((s, p) => s + p.kpis.wip, 0)
@@ -124,7 +129,7 @@ function CompanyKpis({ projects }: { projects: ProjectWithKpis[] }) {
   return (
     <div className="space-y-3 pt-2">
       <p className="text-[11px] font-semibold uppercase tracking-wider text-[#5B6673]">
-        Companie · toate proiectele
+        Companie · proiectele active
       </p>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <CompanyKpiCard
@@ -166,19 +171,124 @@ function CompanyKpis({ projects }: { projects: ProjectWithKpis[] }) {
   )
 }
 
+/** Cardul agregat „Proiecte mici": finalizare 0–100 + câștig/pierdere pe total. */
+function SmallProjects({
+  projects,
+  onOpen,
+}: {
+  projects: ProjectWithKpis[]
+  onOpen: (id: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  if (projects.length === 0) return null
+
+  const value = projects.reduce((s, p) => s + Number(p.contract_value), 0)
+  const ev = projects.reduce((s, p) => s + p.kpis.ev, 0)
+  const cost = projects.reduce((s, p) => s + p.kpis.actualCost, 0)
+  const completion = value > 0 ? ev / value : 0
+  // plan agregat, ponderat cu valoarea (pentru liniuța neagră)
+  const planWeighted =
+    value > 0
+      ? projects.reduce((s, p) => s + p.kpis.planPct * Number(p.contract_value), 0) / value
+      : 0
+  const result = ev - cost
+  const margin = ev > 0 ? result / ev : 0
+
+  return (
+    <Card className="space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-lg font-semibold">Proiecte mici</h2>
+        <span className="text-sm text-[#5B6673]">
+          {projects.length === 1 ? 'un proiect' : `${projects.length} proiecte`} ·{' '}
+          {lei(value)} în total
+        </span>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <ProgressBar donePct={completion} planPct={planWeighted} className="flex-1" />
+        <span className="shrink-0 text-sm font-semibold">{pct(completion)}</span>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <KpiPill color={result >= 0 ? 'good' : 'error'}>
+          {result >= 0
+            ? `+${compact(result)} lei câștigați`
+            : `${compact(result)} lei pierduți`}
+        </KpiPill>
+        <NeutralPill>Marjă {pct(margin)}</NeutralPill>
+        <NeutralPill>cost {compact(cost)} lei</NeutralPill>
+        <button
+          onClick={() => setOpen((o) => !o)}
+          className="ml-auto rounded-full bg-[#EEECE7] px-4 py-1.5 text-sm font-medium hover:bg-[#E2DFD8]"
+        >
+          {open ? 'Ascunde lista' : `Arată proiectele mici (${projects.length})`}
+        </button>
+      </div>
+
+      {open && (
+        <div className="space-y-3 border-t border-[#E8E8E8] pt-3">
+          {projects.map((p) => (
+            <ProjectCard key={p.id} p={p} onOpen={() => onOpen(p.id)} />
+          ))}
+        </div>
+      )}
+    </Card>
+  )
+}
+
 export function ProiecteView({
   projects,
   onOpen,
   onNew,
+  onChanged,
 }: {
   projects: ProjectWithKpis[]
   onOpen: (projectId: string) => void
   onNew: () => void
+  onChanged: () => void
 }) {
-  // Proiectele finalizate stau în bucket-ul lor, sub cele active
-  const activeProjects = projects.filter((p) => p.active)
-  const doneProjects = projects.filter((p) => !p.active)
-  const totalContract = activeProjects.reduce((s, p) => s + Number(p.contract_value), 0)
+  const mainActive = useMemo(
+    () => projects.filter((p) => p.active && !p.is_small),
+    [projects]
+  )
+  const smallActive = useMemo(
+    () => projects.filter((p) => p.active && p.is_small),
+    [projects]
+  )
+  const doneProjects = useMemo(() => projects.filter((p) => !p.active), [projects])
+  const totalContract = mainActive.reduce((s, p) => s + Number(p.contract_value), 0)
+
+  const [showDone, setShowDone] = useState(false)
+
+  // ── Drag & drop: ordinea locală a listei principale ──
+  const [order, setOrder] = useState<string[]>([])
+  const [dragId, setDragId] = useState<string | null>(null)
+  useEffect(() => {
+    setOrder(mainActive.map((p) => p.id))
+  }, [mainActive])
+
+  const byId = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects])
+  const ordered = order.map((id) => byId.get(id)).filter(Boolean) as ProjectWithKpis[]
+
+  function moveOver(overId: string) {
+    if (!dragId || dragId === overId) return
+    setOrder((old) => {
+      const next = old.filter((id) => id !== dragId)
+      next.splice(next.indexOf(overId), 0, dragId)
+      return next
+    })
+  }
+
+  async function persistOrder() {
+    setDragId(null)
+    // ordinea globală: lista principală, apoi micile, apoi finalizatele
+    await setProjectsOrder([
+      ...order,
+      ...smallActive.map((p) => p.id),
+      ...doneProjects.map((p) => p.id),
+    ])
+    onChanged()
+  }
 
   return (
     <div className="mx-auto max-w-6xl space-y-4 px-6 py-6">
@@ -186,10 +296,10 @@ export function ProiecteView({
         <div>
           <h1 className="text-2xl font-semibold">Proiecte</h1>
           <p className="mt-0.5 text-sm text-[#5B6673]">
-            {activeProjects.length === 1
+            {mainActive.length === 1
               ? 'un proiect în derulare'
-              : `${activeProjects.length} proiecte în derulare`}{' '}
-            · contracte semnate {lei(totalContract)}
+              : `${mainActive.length} proiecte în derulare`}{' '}
+            · contracte semnate {lei(totalContract)} · trage cardurile ca să le ordonezi
           </p>
         </div>
         <button
@@ -200,7 +310,7 @@ export function ProiecteView({
         </button>
       </div>
 
-      {activeProjects.length === 0 && (
+      {mainActive.length === 0 && (
         <Card className="py-10 text-center">
           <p className="font-medium">Niciun proiect activ</p>
           <p className="mt-1 text-sm text-[#5B6673]">
@@ -209,22 +319,41 @@ export function ProiecteView({
         </Card>
       )}
 
-      {activeProjects.map((p) => (
-        <ProjectCard key={p.id} p={p} onOpen={() => onOpen(p.id)} />
+      {ordered.map((p) => (
+        <div
+          key={p.id}
+          draggable
+          onDragStart={() => setDragId(p.id)}
+          onDragOver={(e) => {
+            e.preventDefault()
+            moveOver(p.id)
+          }}
+          onDragEnd={persistOrder}
+          className={`cursor-grab active:cursor-grabbing ${dragId === p.id ? 'opacity-60' : ''}`}
+        >
+          <ProjectCard p={p} onOpen={() => onOpen(p.id)} />
+        </div>
       ))}
 
-      <CompanyKpis projects={activeProjects} />
+      <SmallProjects projects={smallActive} onOpen={onOpen} />
+
+      <CompanyKpis projects={mainActive} />
 
       {doneProjects.length > 0 && (
-        <div className="space-y-3 pt-4">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-[#5B6673]">
-            Finalizate · {doneProjects.length}
-          </p>
-          <div className="space-y-3 opacity-70">
-            {doneProjects.map((p) => (
-              <ProjectCard key={p.id} p={p} onOpen={() => onOpen(p.id)} />
-            ))}
-          </div>
+        <div className="pt-2">
+          <button
+            onClick={() => setShowDone((s) => !s)}
+            className="rounded-full bg-[#EEECE7] px-4 py-2 text-sm font-medium hover:bg-[#E2DFD8]"
+          >
+            {showDone ? 'Ascunde finalizatele' : `Arată finalizatele (${doneProjects.length})`}
+          </button>
+          {showDone && (
+            <div className="mt-3 space-y-3 opacity-70">
+              {doneProjects.map((p) => (
+                <ProjectCard key={p.id} p={p} onOpen={() => onOpen(p.id)} />
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

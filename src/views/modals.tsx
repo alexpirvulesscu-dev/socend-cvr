@@ -169,6 +169,7 @@ export function TaskModal({
 }) {
   const [name, setName] = useState(task?.name ?? '')
   const [value, setValue] = useState(String(task?.value ?? ''))
+  const [manDays, setManDays] = useState(String(task?.planned_man_days ?? ''))
   const [rows, setRows] = useState<EditDeliv[]>(
     (task?.deliverables ?? []).map((d: DeliverableRow) => ({
       id: d.id,
@@ -202,8 +203,9 @@ export function TaskModal({
         qtyDone: toNum(r.qtyDone),
         weight: toNum(r.weight),
       })
+      const plannedManDays = manDays.trim() === '' ? null : toNum(manDays)
       if (task) {
-        await updateTask(task.id, { name: name.trim(), value: toNum(value) })
+        await updateTask(task.id, { name: name.trim(), value: toNum(value), plannedManDays })
         let sort = 1
         for (const r of rows) {
           if (r.removed) {
@@ -215,7 +217,12 @@ export function TaskModal({
           sort++
         }
       } else {
-        await addTask(jobId, { name: name.trim(), value: toNum(value) }, liveRows.map(patchOf), sortOrder)
+        await addTask(
+          jobId,
+          { name: name.trim(), value: toNum(value), plannedManDays },
+          liveRows.map(patchOf),
+          sortOrder
+        )
       }
       onSaved()
     } catch (e) {
@@ -227,7 +234,7 @@ export function TaskModal({
   return (
     <Modal title={task ? 'Editează taskul' : 'Adaugă task'} onClose={onClose}>
       <div className="space-y-4">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_180px]">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_150px_150px]">
           <div>
             <label className={labelCls}>Nume task</label>
             <input className={inputCls} value={name} placeholder="ex. Înlocuire conductă" onChange={(e) => setName(e.target.value)} />
@@ -235,6 +242,16 @@ export function TaskModal({
           <div>
             <label className={labelCls}>Valoare (lei)</label>
             <input className={inputCls} inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value)} />
+          </div>
+          <div>
+            <label className={labelCls}>Oameni-zile (plan)</label>
+            <input
+              className={inputCls}
+              inputMode="decimal"
+              value={manDays}
+              placeholder="ex. 12"
+              onChange={(e) => setManDays(e.target.value)}
+            />
           </div>
         </div>
 
@@ -281,10 +298,15 @@ export function TaskModal({
           )}
           <button
             onClick={() =>
-              setRows((old) => [
-                ...old,
-                { id: null, name: '', um: '', qtyTotal: '', qtyDone: '0', weight: '', removed: false },
-              ])
+              setRows((old) => {
+                // ponderea nouă se precompletează cu restul până la 100%
+                const used = old.filter((r) => !r.removed).reduce((s, r) => s + toNum(r.weight), 0)
+                const rest = Math.max(0, 100 - used)
+                return [
+                  ...old,
+                  { id: null, name: '', um: '', qtyTotal: '', qtyDone: '0', weight: String(rest), removed: false },
+                ]
+              })
             }
             className="rounded-full bg-[#DDEDDC] px-4 py-2 text-sm font-medium text-[#46862A] hover:bg-[#CBE3C9]"
           >

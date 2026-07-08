@@ -11,7 +11,14 @@ import {
   type JobWithKpis,
   type TaskRow,
 } from '../data/projects'
-import { addCostEntry, deleteCostEntry, setTaskStatus } from '../data/mutations'
+import {
+  addCostEntry,
+  deleteCostEntry,
+  duplicateJob,
+  duplicateTask,
+  setTaskStatus,
+} from '../data/mutations'
+import { useTaskManDays } from '../data/cronologic'
 import { costColor, deliverablePct, scheduleColor, taskPct } from '../domain/kpi'
 import { compact, dataRo, lei, num, pct } from '../lib/format'
 import {
@@ -65,10 +72,16 @@ function DeliverableRowView({
 function TaskCard({
   task,
   index,
+  jobId,
+  taskCount,
+  consumedMd,
   onChanged,
 }: {
   task: TaskRow
   index: number
+  jobId: string
+  taskCount: number
+  consumedMd: number
   onChanged: () => void
 }) {
   const [busy, setBusy] = useState(false)
@@ -80,6 +93,11 @@ function TaskCard({
       weight: Number(d.weight),
     }))
   )
+  // Ținta de efort: dacă taskul are oameni-zile planificate, comparăm efortul
+  // consumat (din Pontaj) cu progresul fizic. Efort peste progres = sub randament.
+  const plannedMd = task.planned_man_days == null ? null : Number(task.planned_man_days)
+  const effortPct = plannedMd && plannedMd > 0 ? consumedMd / plannedMd : null
+  const effortBehind = effortPct !== null && effortPct > pctDone + 0.02
 
   async function changeStatus(status: 'in_lucru' | 'finalizat') {
     setBusy(true)
@@ -121,6 +139,25 @@ function TaskCard({
         <strong className="text-[#0D1A2D]">{pct(pctDone)}</strong> din valoarea taskului realizată
       </p>
 
+      {/* Ținta de efort (oameni-zile): bara = progres fizic, liniuța = efort consumat */}
+      {plannedMd !== null && plannedMd > 0 && (
+        <div className="rounded-2xl bg-[#FAF9F6] p-3">
+          <div className="flex items-baseline justify-between text-sm">
+            <span className="text-[#5B6673]">
+              Efort: <strong className="text-[#0D1A2D]">{num(consumedMd)}</strong> din{' '}
+              {num(plannedMd)} oameni-zile
+            </span>
+            <span className={`font-medium ${effortBehind ? 'text-[#D64545]' : 'text-[#46862A]'}`}>
+              {effortBehind ? 'sub randament' : 'în ritm'}
+            </span>
+          </div>
+          <ProgressBar donePct={pctDone} planPct={Math.min(effortPct ?? 0, 1)} className="mt-2" />
+          <p className="mt-1 text-xs text-[#5B6673]">
+            bara = progres fizic · liniuța = efort consumat ({pct(effortPct ?? 0, 0)})
+          </p>
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center gap-2">
         {task.status === 'neinceput' && (
           <button
@@ -154,6 +191,21 @@ function TaskCard({
           className="rounded-full border border-[#E8E8E8] bg-white px-4 py-2 text-sm font-medium text-[#5B6673] hover:border-[#58A834] hover:text-[#0D1A2D]"
         >
           Editează
+        </button>
+        <button
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true)
+            try {
+              await duplicateTask(jobId, task, taskCount + 1)
+              onChanged()
+            } finally {
+              setBusy(false)
+            }
+          }}
+          className="rounded-full border border-[#E8E8E8] bg-white px-4 py-2 text-sm font-medium text-[#5B6673] hover:border-[#58A834] hover:text-[#0D1A2D] disabled:opacity-50"
+        >
+          Duplică
         </button>
       </div>
 
@@ -291,6 +343,7 @@ export function JobView({
   job,
   projectId,
   projectName,
+  jobsCount,
   onBack,
   onChanged,
   onCronologic,
@@ -299,6 +352,7 @@ export function JobView({
   job: JobWithKpis
   projectId: string
   projectName: string
+  jobsCount: number
   onBack: () => void
   onChanged: () => void
   onCronologic: () => void
@@ -306,6 +360,8 @@ export function JobView({
 }) {
   const [editing, setEditing] = useState(false)
   const [addingTask, setAddingTask] = useState(false)
+  const [duplicating, setDuplicating] = useState(false)
+  const manDays = useTaskManDays(job.tasks.map((t) => t.id))
   const k = job.kpis
   const costOk = costColor(k.costVariance)
   const inLucru = job.tasks.filter((t) => t.status === 'in_lucru').length
@@ -353,6 +409,33 @@ export function JobView({
           >
             Vedere cronologică
           </button>
+          <button
+            disabled={duplicating}
+            onClick={async () => {
+              setDuplicating(true)
+              try {
+                await duplicateJob(
+                  projectId,
+                  {
+                    name: job.name,
+                    start_date: job.start_date,
+                    end_date: job.end_date,
+                    tasks: job.tasks,
+                    budgets: job.budgetByCategory,
+                  },
+                  jobsCount + 1
+                )
+                // înapoi la proiect, ca să vezi copia lângă original
+                onChanged()
+                onBack()
+              } finally {
+                setDuplicating(false)
+              }
+            }}
+            className="rounded-full border border-[#E8E8E8] bg-white px-4 py-1.5 text-sm font-medium hover:border-[#58A834] disabled:opacity-50"
+          >
+            {duplicating ? 'Se duplică…' : 'Duplică jobul'}
+          </button>
           <KpiPill color={scheduleColor(k.behindDays)}>{scheduleText(k.behindDays)}</KpiPill>
           <KpiPill color={costOk}>
             {costOk === 'good'
@@ -397,7 +480,15 @@ export function JobView({
             </Card>
           )}
           {job.tasks.map((t, i) => (
-            <TaskCard key={t.id} task={t} index={i} onChanged={onChanged} />
+            <TaskCard
+              key={t.id}
+              task={t}
+              index={i}
+              jobId={job.id}
+              taskCount={job.tasks.length}
+              consumedMd={manDays[t.id] ?? 0}
+              onChanged={onChanged}
+            />
           ))}
         </div>
 

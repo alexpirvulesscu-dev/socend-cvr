@@ -34,7 +34,7 @@
 ## Naming rule (pontaj_ done · pnl_ awaiting your go)
 
 - **`pontaj_*`** — done: all 8 Pontaj tables renamed (they had zero consumers, so it was free).
-- **`pnl_*`** — prepared but NOT executed, because renaming `plati`/`incasari`/`proiecte` instantly breaks the live P&L app AND the n8n invoice workflows (your own hard rule says to flag this). The safe plan is in `supabase/migrations/PROPUNERE_pnl_prefix.sql.txt`: rename + compatibility views with the old names (so n8n keeps working unchanged) + update the P&L app's code to the new names in its own repo. Say "go pnl rename" and I'll execute the whole chain.
+- **`pnl_*`** — DECLINED by Alex (2026-07-08): the P&L tables stay with their current names, because n8n's live invoice workflows write into them by name. Decision closed.
 
 ## Security findings (important now that CVR is public)
 

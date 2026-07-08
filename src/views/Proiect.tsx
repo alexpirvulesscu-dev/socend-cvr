@@ -54,6 +54,7 @@ function ProjectEditModal({
   )
   const [startDate, setStartDate] = useState(p.start_date ?? '')
   const [endDate, setEndDate] = useState(p.end_date ?? '')
+  const [isSmall, setIsSmall] = useState(p.is_small)
   const [depus, setDepus] = useState(String(p.billing.depus))
   const [certificat, setCertificat] = useState(String(p.billing.certificat))
   const [facturat, setFacturat] = useState(String(p.billing.facturat))
@@ -110,6 +111,16 @@ function ProjectEditModal({
           </div>
         </div>
 
+        <label className="flex cursor-pointer items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={isSmall}
+            onChange={(e) => setIsSmall(e.target.checked)}
+            className="h-4 w-4 accent-[#58A834]"
+          />
+          Proiect mic — stă în secțiunea „Proiecte mici", nu în lista principală
+        </label>
+
         <div>
           <p className="mb-2 text-sm font-semibold">Flux facturare client (lei)</p>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -145,6 +156,7 @@ function ProjectEditModal({
                   billingMode,
                   startDate,
                   endDate,
+                  isSmall,
                 })
                 await updateBilling(p.id, {
                   depus: toNum(depus),
@@ -258,6 +270,8 @@ function FluxFacturare({ p }: { p: ProjectWithKpis }) {
 }
 
 function CumSeCalculeaza() {
+  // pliat implicit — informația apare doar la cerere, nu poluează pagina
+  const [open, setOpen] = useState(false)
   const rows = [
     ['Progres', 'valoarea taskului × procentul realizat din livrabile, adunat pe tot proiectul'],
     ['Grafic', '(procent planificat azi − procent realizat) × durata jobului, în zile; media pe proiect e ponderată cu valoarea joburilor'],
@@ -266,16 +280,29 @@ function CumSeCalculeaza() {
     ['Încasări', 'încasat ÷ facturat; WIP = lucrări executate care nu au fost încă facturate'],
   ]
   return (
-    <Card>
-      <h3 className="mb-3 text-base font-semibold">Cum se calculează</h3>
-      <dl className="space-y-2">
-        {rows.map(([term, def]) => (
-          <div key={term} className="text-sm">
-            <dt className="inline font-medium">{term}:</dt>{' '}
-            <dd className="inline text-[#5B6673]">{def}</dd>
-          </div>
-        ))}
-      </dl>
+    <Card className="!p-0">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center justify-between px-5 py-4 text-left"
+      >
+        <h3 className="text-base font-semibold">Cum se calculează</h3>
+        <span
+          aria-hidden
+          className={`text-[#C9C5BC] transition-transform ${open ? 'rotate-90' : ''}`}
+        >
+          ›
+        </span>
+      </button>
+      {open && (
+        <dl className="space-y-2 px-5 pb-5">
+          {rows.map(([term, def]) => (
+            <div key={term} className="text-sm">
+              <dt className="inline font-medium">{term}:</dt>{' '}
+              <dd className="inline text-[#5B6673]">{def}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
     </Card>
   )
 }

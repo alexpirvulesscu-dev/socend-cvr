@@ -42,6 +42,7 @@ export interface ProjectPatch {
   billingMode: 'stadii_fizice' | 'lunara'
   startDate: string
   endDate: string
+  isSmall: boolean
 }
 
 async function syncPnl(pnlId: string | null, patch: { nume?: string; activ?: boolean }) {
@@ -86,10 +87,22 @@ export async function updateProject(
       billing_mode: p.billingMode,
       start_date: p.startDate || null,
       end_date: p.endDate || null,
+      is_small: p.isSmall,
     })
     .eq('id', id)
   if (error) throw error
   await syncPnl(pnlId, { nume: p.name })
+}
+
+/** Persistă ordinea manuală (drag & drop) a proiectelor. */
+export async function setProjectsOrder(idsInOrder: string[]): Promise<void> {
+  for (const [i, id] of idsInOrder.entries()) {
+    const { error } = await supabase
+      .from('projects')
+      .update({ sort_order: i + 1 })
+      .eq('id', id)
+    if (error) throw error
+  }
 }
 
 /** Finalizează / reactivează proiectul (bucket-ul „Finalizate") + sincron P&L. */
@@ -183,13 +196,19 @@ export async function addJob(
 /** Adaugă un task nou (cu livrabilele lui) pe un job EXISTENT. */
 export async function addTask(
   jobId: string,
-  t: { name: string; value: number },
+  t: { name: string; value: number; plannedManDays: number | null },
   deliverables: DeliverablePatch[],
   sortOrder: number
 ): Promise<void> {
   const { data, error } = await supabase
     .from('tasks')
-    .insert({ job_id: jobId, name: t.name, value: t.value, sort_order: sortOrder })
+    .insert({
+      job_id: jobId,
+      name: t.name,
+      value: t.value,
+      planned_man_days: t.plannedManDays,
+      sort_order: sortOrder,
+    })
     .select('id')
     .single()
   if (error) throw error
@@ -210,8 +229,14 @@ export async function addTask(
 }
 
 // ── Editarea taskurilor și livrabilelor ──────────────────────────────────
-export async function updateTask(id: string, t: { name: string; value: number }): Promise<void> {
-  const { error } = await supabase.from('tasks').update({ name: t.name, value: t.value }).eq('id', id)
+export async function updateTask(
+  id: string,
+  t: { name: string; value: number; plannedManDays: number | null }
+): Promise<void> {
+  const { error } = await supabase
+    .from('tasks')
+    .update({ name: t.name, value: t.value, planned_man_days: t.plannedManDays })
+    .eq('id', id)
   if (error) throw error
 }
 
@@ -254,6 +279,88 @@ export async function deleteDeliverable(id: string): Promise<void> {
   if (error) throw error
 }
 
+// ── Duplicare (taskurile și joburile similare se copiază, nu se rescriu) ──
+// Copia pornește de la zero: status neînceput, cantități realizate 0.
+
+interface TaskLike {
+  name: string
+  value: number
+  planned_man_days?: number | null
+  deliverables: { name: string; um: string; qty_total: number; weight: number; sort_order: number }[]
+}
+
+async function insertTaskCopy(jobId: string, t: TaskLike, name: string, sortOrder: number) {
+  const { data, error } = await supabase
+    .from('tasks')
+    .insert({
+      job_id: jobId,
+      name,
+      value: t.value,
+      planned_man_days: t.planned_man_days ?? null,
+      status: 'neinceput',
+      sort_order: sortOrder,
+    })
+    .select('id')
+    .single()
+  if (error) throw error
+  if (t.deliverables.length > 0) {
+    const { error: dErr } = await supabase.from('deliverables').insert(
+      t.deliverables.map((d) => ({
+        task_id: data.id as string,
+        name: d.name,
+        um: d.um,
+        qty_total: d.qty_total,
+        qty_done: 0,
+        weight: d.weight,
+        sort_order: d.sort_order,
+      }))
+    )
+    if (dErr) throw dErr
+  }
+}
+
+export async function duplicateTask(jobId: string, t: TaskLike, sortOrder: number): Promise<void> {
+  await insertTaskCopy(jobId, t, `${t.name} (copie)`, sortOrder)
+}
+
+export async function duplicateJob(
+  projectId: string,
+  job: {
+    name: string
+    start_date: string
+    end_date: string
+    tasks: TaskLike[]
+    budgets: Record<CostCategory, number>
+  },
+  sortOrder: number
+): Promise<void> {
+  const { data, error } = await supabase
+    .from('jobs')
+    .insert({
+      project_id: projectId,
+      name: `${job.name} (copie)`,
+      start_date: job.start_date,
+      end_date: job.end_date,
+      sort_order: sortOrder,
+    })
+    .select('id')
+    .single()
+  if (error) throw error
+  const jobId = data.id as string
+
+  const budgetRows = Object.entries(job.budgets)
+    .filter(([, amount]) => amount > 0)
+    .map(([category, amount]) => ({ job_id: jobId, category, amount }))
+  if (budgetRows.length > 0) {
+    const { error: bErr } = await supabase.from('cvr_job_budgets').insert(budgetRows)
+    if (bErr) throw bErr
+  }
+
+  for (const [i, t] of job.tasks.entries()) {
+    await insertTaskCopy(jobId, t, t.name, i + 1)
+  }
+}
+
 // ── Crearea unui proiect nou (wizard-ul Configurare) ─────────────────────
 export interface NewDeliverable {
   name: string
@@ -265,6 +372,7 @@ export interface NewDeliverable {
 export interface NewTask {
   name: string
   value: number
+  plannedManDays: number | null
   deliverables: NewDeliverable[]
 }
 
@@ -282,6 +390,7 @@ export interface NewProject {
   billingMode: 'stadii_fizice' | 'lunara'
   startDate: string
   endDate: string
+  isSmall: boolean
   jobs: NewJob[]
 }
 
@@ -306,6 +415,7 @@ export async function createProject(p: NewProject): Promise<string> {
       contract_value: contractValue,
       start_date: p.startDate || null,
       end_date: p.endDate || null,
+      is_small: p.isSmall,
     })
     .select('id')
     .single()
@@ -339,7 +449,13 @@ export async function createProject(p: NewProject): Promise<string> {
       for (const [ti, task] of job.tasks.entries()) {
         const { data: taskRow, error: taskErr } = await supabase
           .from('tasks')
-          .insert({ job_id: jobId, name: task.name, value: task.value, sort_order: ti + 1 })
+          .insert({
+            job_id: jobId,
+            name: task.name,
+            value: task.value,
+            planned_man_days: task.plannedManDays,
+            sort_order: ti + 1,
+          })
           .select('id')
           .single()
         if (taskErr) throw taskErr

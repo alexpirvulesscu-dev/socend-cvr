@@ -63,6 +63,34 @@ export async function fetchMonthData(
   return { qty, workers, allTimeWorkers }
 }
 
+/** Oameni-zile consumate pe task, de la începutul lucrării (din labour_daily). */
+export function useTaskManDays(taskIds: string[]) {
+  const [manDays, setManDays] = useState<Record<string, number>>({})
+
+  useEffect(() => {
+    if (taskIds.length === 0) return
+    let cancelled = false
+    supabase
+      .from('labour_daily')
+      .select('task_id, workers')
+      .in('task_id', taskIds)
+      .then(({ data, error }) => {
+        if (cancelled || error) return
+        const sums: Record<string, number> = {}
+        for (const r of data ?? []) {
+          sums[r.task_id as string] = (sums[r.task_id as string] ?? 0) + Number(r.workers)
+        }
+        setManDays(sums)
+      })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskIds.join(',')])
+
+  return manDays
+}
+
 export function useMonthData(
   deliverableIds: string[],
   taskIds: string[],

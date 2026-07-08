@@ -60,6 +60,7 @@ export interface TaskRow {
   value: number
   status: TaskStatus
   sort_order: number
+  planned_man_days: number | null
   deliverables: DeliverableRow[]
 }
 
@@ -105,6 +106,8 @@ export interface ProjectRow {
   active: boolean
   location: string | null
   pnl_proiect_id: string | null
+  is_small: boolean
+  sort_order: number
   jobs: JobRow[]
   // PostgREST întoarce OBIECT pentru relația 1:1 (unique pe project_id).
   // Toleranța pentru array de mai jos NU e un caz real de date, ci o plasă de
@@ -195,11 +198,11 @@ function decorateProject(p: ProjectRow, today: string): ProjectWithKpis {
 }
 
 const TREE_SELECT = `
-  id, name, client, billing_mode, contract_value, start_date, end_date, active, location, pnl_proiect_id,
+  id, name, client, billing_mode, contract_value, start_date, end_date, active, location, pnl_proiect_id, is_small, sort_order,
   jobs (
     id, name, start_date, end_date, sort_order,
     tasks (
-      id, name, value, status, sort_order,
+      id, name, value, status, sort_order, planned_man_days,
       deliverables ( id, name, um, qty_total, qty_done, weight, sort_order )
     ),
     cvr_job_budgets ( category, amount ),
@@ -210,7 +213,11 @@ const TREE_SELECT = `
 
 /** Citește tot arborele, cu KPI-urile calculate la zi. */
 export async function fetchProjectTree(): Promise<ProjectWithKpis[]> {
-  const { data, error } = await supabase.from('projects').select(TREE_SELECT).order('name')
+  const { data, error } = await supabase
+    .from('projects')
+    .select(TREE_SELECT)
+    .order('sort_order')
+    .order('name')
   if (error) throw error
   const today = todayIso()
   return ((data ?? []) as unknown as ProjectRow[]).map((p) => decorateProject(p, today))

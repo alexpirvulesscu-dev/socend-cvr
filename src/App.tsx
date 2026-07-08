@@ -36,9 +36,9 @@ function TopBar({
   return (
     <header className="sticky top-0 z-10 border-b border-[#E8E8E8]/60 bg-[rgba(250,249,246,0.8)] backdrop-blur-xl">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-2.5">
-        <span className="flex items-center gap-2">
-          <img src="/logo-socend.png" alt="Socend Construct" className="h-6 w-auto" />
-          <span className="rounded-md bg-[#DDEDDC] px-1.5 py-0.5 text-xs font-bold tracking-wide text-[#46862A]">
+        <span className="flex items-center gap-2.5">
+          <img src="/logo-socend.png" alt="Socend Construct" className="h-10 w-auto" />
+          <span className="rounded-md bg-[#DDEDDC] px-2 py-1 text-sm font-bold tracking-wide text-[#46862A]">
             CVR
           </span>
         </span>
@@ -122,6 +122,7 @@ function OfficeApp({ role, email }: { role: Role; email: string }) {
           projects={projects}
           onOpen={(projectId) => setRoute({ view: 'proiect', projectId })}
           onNew={() => setRoute({ view: 'config' })}
+          onChanged={refetch}
         />
       )}
       {route.view === 'proiect' && project && (
@@ -141,6 +142,7 @@ function OfficeApp({ role, email }: { role: Role; email: string }) {
           job={job}
           projectId={project.id}
           projectName={project.name}
+          jobsCount={project.jobs.length}
           onBack={() => setRoute({ view: 'proiect', projectId: project.id })}
           onChanged={refetch}
           onCronologic={() =>

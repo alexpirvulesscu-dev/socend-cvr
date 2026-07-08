@@ -29,7 +29,7 @@ export function LoginView() {
     <div className="flex min-h-screen items-center justify-center px-4">
       <Card className="w-full max-w-sm space-y-4 p-7">
         <div>
-          <img src="/logo-socend.png" alt="Socend Construct" className="h-9 w-auto" />
+          <img src="/logo-socend.png" alt="Socend Construct" className="h-14 w-auto" />
           <h1 className="sr-only">Socend CVR</h1>
           <p className="mt-3 text-sm text-[#5B6673]">
             <span className="font-semibold text-[#0D1A2D]">CVR</span> · cost vs valoare pe proiecte
