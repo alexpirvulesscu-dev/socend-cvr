@@ -344,17 +344,11 @@ export function ProiecteView({
                 </div>
               )}
               <div
-                className={`flex items-stretch gap-2 transition-opacity ${
+                className={`cursor-grab transition-opacity active:cursor-grabbing ${
                   dragId === p.id ? 'opacity-40' : ''
                 }`}
               >
-                {/* mâner de tragere clar */}
-                <div className="flex w-6 shrink-0 cursor-grab items-center justify-center rounded-xl text-[#C9C5BC] hover:bg-[#EEECE7] hover:text-[#5B6673] active:cursor-grabbing">
-                  <span aria-hidden className="text-lg leading-none">⠿</span>
-                </div>
-                <div className="flex-1">
-                  <ProjectCard p={p} onOpen={() => onOpen(p.id)} />
-                </div>
+                <ProjectCard p={p} onOpen={() => onOpen(p.id)} />
               </div>
             </div>
           )
