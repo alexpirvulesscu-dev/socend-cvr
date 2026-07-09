@@ -149,6 +149,7 @@ interface EditDeliv {
   qtyTotal: string
   qtyDone: string
   weight: string
+  manDays: string
   removed: boolean
 }
 
@@ -169,7 +170,6 @@ export function TaskModal({
 }) {
   const [name, setName] = useState(task?.name ?? '')
   const [value, setValue] = useState(String(task?.value ?? ''))
-  const [manDays, setManDays] = useState(String(task?.planned_man_days ?? ''))
   const [rows, setRows] = useState<EditDeliv[]>(
     (task?.deliverables ?? []).map((d: DeliverableRow) => ({
       id: d.id,
@@ -178,6 +178,7 @@ export function TaskModal({
       qtyTotal: String(d.qty_total),
       qtyDone: String(d.qty_done),
       weight: String(d.weight),
+      manDays: d.planned_man_days == null ? '' : String(d.planned_man_days),
       removed: false,
     }))
   )
@@ -202,10 +203,10 @@ export function TaskModal({
         qtyTotal: toNum(r.qtyTotal),
         qtyDone: toNum(r.qtyDone),
         weight: toNum(r.weight),
+        plannedManDays: r.manDays.trim() === '' ? null : toNum(r.manDays),
       })
-      const plannedManDays = manDays.trim() === '' ? null : toNum(manDays)
       if (task) {
-        await updateTask(task.id, { name: name.trim(), value: toNum(value), plannedManDays })
+        await updateTask(task.id, { name: name.trim(), value: toNum(value) })
         let sort = 1
         for (const r of rows) {
           if (r.removed) {
@@ -217,12 +218,7 @@ export function TaskModal({
           sort++
         }
       } else {
-        await addTask(
-          jobId,
-          { name: name.trim(), value: toNum(value), plannedManDays },
-          liveRows.map(patchOf),
-          sortOrder
-        )
+        await addTask(jobId, { name: name.trim(), value: toNum(value) }, liveRows.map(patchOf), sortOrder)
       }
       onSaved()
     } catch (e) {
@@ -234,7 +230,7 @@ export function TaskModal({
   return (
     <Modal title={task ? 'Editează taskul' : 'Adaugă task'} onClose={onClose}>
       <div className="space-y-4">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_150px_150px]">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_180px]">
           <div>
             <label className={labelCls}>Nume task</label>
             <input className={inputCls} value={name} placeholder="ex. Înlocuire conductă" onChange={(e) => setName(e.target.value)} />
@@ -242,16 +238,6 @@ export function TaskModal({
           <div>
             <label className={labelCls}>Valoare (lei)</label>
             <input className={inputCls} inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value)} />
-          </div>
-          <div>
-            <label className={labelCls}>Oameni-zile (plan)</label>
-            <input
-              className={inputCls}
-              inputMode="decimal"
-              value={manDays}
-              placeholder="ex. 12"
-              onChange={(e) => setManDays(e.target.value)}
-            />
           </div>
         </div>
 
@@ -289,6 +275,10 @@ export function TaskModal({
                   <label className={labelCls}>Pondere</label>
                   <input className={inputCls} inputMode="decimal" value={r.weight} onChange={(e) => setRow(i, { weight: e.target.value })} />
                 </div>
+                <div className="w-24">
+                  <label className={labelCls}>Oameni-zile</label>
+                  <input className={inputCls} inputMode="decimal" value={r.manDays} placeholder="ex. 12" onChange={(e) => setRow(i, { manDays: e.target.value })} />
+                </div>
                 <DangerButton label="✕" armedLabel="Sigur?" onConfirmed={() => setRow(i, { removed: true })} />
               </div>
             )
@@ -304,7 +294,7 @@ export function TaskModal({
                 const rest = Math.max(0, 100 - used)
                 return [
                   ...old,
-                  { id: null, name: '', um: '', qtyTotal: '', qtyDone: '0', weight: String(rest), removed: false },
+                  { id: null, name: '', um: '', qtyTotal: '', qtyDone: '0', weight: String(rest), manDays: '', removed: false },
                 ]
               })
             }

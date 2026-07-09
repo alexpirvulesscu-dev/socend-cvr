@@ -269,15 +269,58 @@ function FluxFacturare({ p }: { p: ProjectWithKpis }) {
   )
 }
 
+/** Costul real al proiectului, dedus din P&L pe cele 6 categorii CVR. */
+function CosturiPnl({ p }: { p: ProjectWithKpis }) {
+  const c = p.pnlCosts
+  if (!c) return null
+  const rows: [string, number][] = [
+    ['Manoperă (salarii)', c.manopera],
+    ['Materiale și consumabile', c.materiale],
+    ['Subcontractori', c.subcontractori],
+    ['Combustibil și transport', c.combustibil],
+    ['Echipamente și utilaje', c.echipamente],
+    ['Overheads (cheltuieli generale)', c.overheads],
+  ]
+  return (
+    <Card>
+      <div className="mb-3 flex items-baseline justify-between">
+        <h3 className="text-base font-semibold">Costuri reale · din P&amp;L</h3>
+        <span className="text-sm font-semibold">{lei(c.total)}</span>
+      </div>
+      <div className="divide-y divide-[#F3F1EC]">
+        {rows.map(([label, val]) => (
+          <div key={label} className="flex items-center justify-between py-2 text-sm">
+            <span>{label}</span>
+            <span className="text-[#5B6673]">{lei(val)}</span>
+          </div>
+        ))}
+      </div>
+      <p className="mt-3 border-t border-[#E8E8E8] pt-3 text-xs text-[#5B6673]">
+        Trase automat din plățile din P&amp;L. Manopera și cheltuielile generale se repartizează
+        pe proiecte (vezi „Cum se calculează"). Se actualizează pe măsură ce n8n importă facturi.
+      </p>
+    </Card>
+  )
+}
+
 function CumSeCalculeaza() {
   // pliat implicit — informația apare doar la cerere, nu poluează pagina
   const [open, setOpen] = useState(false)
   const rows = [
     ['Progres', 'valoarea taskului × procentul realizat din livrabile, adunat pe tot proiectul'],
     ['Grafic', '(procent planificat azi − procent realizat) × durata jobului, în zile; media pe proiect e ponderată cu valoarea joburilor'],
-    ['Cost vs buget', 'bugetul câștigat (buget × procent realizat) minus costurile reale; plus = sub buget'],
-    ['Marjă la zi', '(lucrări executate − costuri reale) ÷ lucrări executate'],
+    ['Cost vs buget', 'bugetul câștigat (buget × procent realizat) minus costurile reale din P&L; plus = sub buget'],
+    ['Marjă la zi', '(lucrări executate − costuri reale din P&L) ÷ lucrări executate'],
     ['Încasări', 'încasat ÷ facturat; WIP = lucrări executate care nu au fost încă facturate'],
+  ]
+  // regulile de repartizare a costurilor din P&L (cerute de Alex, ca să le țină minte)
+  const costRules: [string, string][] = [
+    ['1. Manoperă (salarii și contribuții)', 'după oameni-zile: orele de pontaj ale proiectului ÷ total ore × totalul salariilor din P&L. Ex: 100 din 1000 oameni-zile pe un proiect = 10% din salarii.'],
+    ['2. Materiale și consumabile', 'direct din P&L pe proiect + cota-parte (după valoarea contractului) din materialele company-wide.'],
+    ['3. Subcontractori', 'direct din P&L pe proiect + cotă company-wide.'],
+    ['4. Combustibil și transport', 'direct din P&L pe proiect + cotă company-wide.'],
+    ['5. Echipamente și utilaje', 'însumează 3 categorii P&L (Echipamente + Scule și unelte + Utilaje); direct pe proiect + cotă company-wide.'],
+    ['6. Overheads', 'alte cheltuieli, asigurări, birou, instructaje, marketing, PPE, servicii bancare, servicii profesionale, taxe — 100% repartizate după valoarea contractului (contract mai mare = pondere mai mare).'],
   ]
   return (
     <Card className="!p-0">
@@ -294,14 +337,29 @@ function CumSeCalculeaza() {
         </span>
       </button>
       {open && (
-        <dl className="space-y-2 px-5 pb-5">
-          {rows.map(([term, def]) => (
-            <div key={term} className="text-sm">
-              <dt className="inline font-medium">{term}:</dt>{' '}
-              <dd className="inline text-[#5B6673]">{def}</dd>
-            </div>
-          ))}
-        </dl>
+        <div className="space-y-4 px-5 pb-5">
+          <dl className="space-y-2">
+            {rows.map(([term, def]) => (
+              <div key={term} className="text-sm">
+                <dt className="inline font-medium">{term}:</dt>{' '}
+                <dd className="inline text-[#5B6673]">{def}</dd>
+              </div>
+            ))}
+          </dl>
+          <div className="border-t border-[#E8E8E8] pt-3">
+            <p className="mb-2 text-sm font-semibold">
+              Costurile reale — de unde vin și cum se repartizează din P&amp;L
+            </p>
+            <dl className="space-y-2">
+              {costRules.map(([term, def]) => (
+                <div key={term} className="text-sm">
+                  <dt className="font-medium">{term}</dt>
+                  <dd className="text-[#5B6673]">{def}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        </div>
       )}
     </Card>
   )
@@ -406,6 +464,8 @@ export function ProiectView({
       </div>
 
       <FluxFacturare p={p} />
+
+      <CosturiPnl p={p} />
 
       {/* Joburi — carduri separate, clicabile, cu reacție la hover (ca în design) */}
       <div className="space-y-3">

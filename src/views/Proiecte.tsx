@@ -260,9 +260,12 @@ export function ProiecteView({
 
   const [showDone, setShowDone] = useState(false)
 
-  // ── Drag & drop: ordinea locală a listei principale ──
+  // ── Drag & drop cu linie de inserție vizibilă ──
+  // dragId = cardul ridicat; overId = cardul deasupra căruia planează (linia
+  // verde apare deasupra lui); '__end__' = inserare la finalul listei.
   const [order, setOrder] = useState<string[]>([])
   const [dragId, setDragId] = useState<string | null>(null)
+  const [overId, setOverId] = useState<string | null>(null)
   useEffect(() => {
     setOrder(mainActive.map((p) => p.id))
   }, [mainActive])
@@ -270,24 +273,23 @@ export function ProiecteView({
   const byId = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects])
   const ordered = order.map((id) => byId.get(id)).filter(Boolean) as ProjectWithKpis[]
 
-  function moveOver(overId: string) {
-    if (!dragId || dragId === overId) return
-    setOrder((old) => {
-      const next = old.filter((id) => id !== dragId)
-      next.splice(next.indexOf(overId), 0, dragId)
-      return next
-    })
-  }
-
-  async function persistOrder() {
+  function drop() {
+    if (dragId && overId) {
+      setOrder((old) => {
+        const next = old.filter((id) => id !== dragId)
+        if (overId === '__end__') next.push(dragId)
+        else next.splice(next.indexOf(overId), 0, dragId)
+        // persistă noua ordine
+        void setProjectsOrder([
+          ...next,
+          ...smallActive.map((p) => p.id),
+          ...doneProjects.map((p) => p.id),
+        ]).then(onChanged)
+        return next
+      })
+    }
     setDragId(null)
-    // ordinea globală: lista principală, apoi micile, apoi finalizatele
-    await setProjectsOrder([
-      ...order,
-      ...smallActive.map((p) => p.id),
-      ...doneProjects.map((p) => p.id),
-    ])
-    onChanged()
+    setOverId(null)
   }
 
   return (
@@ -319,25 +321,66 @@ export function ProiecteView({
         </Card>
       )}
 
-      {ordered.map((p) => (
-        <div
-          key={p.id}
-          draggable
-          onDragStart={() => setDragId(p.id)}
-          onDragOver={(e) => {
-            e.preventDefault()
-            moveOver(p.id)
-          }}
-          onDragEnd={persistOrder}
-          className={`cursor-grab active:cursor-grabbing ${dragId === p.id ? 'opacity-60' : ''}`}
-        >
-          <ProjectCard p={p} onOpen={() => onOpen(p.id)} />
-        </div>
-      ))}
-
-      <SmallProjects projects={smallActive} onOpen={onOpen} />
+      <div onDragOver={(e) => e.preventDefault()} onDrop={drop}>
+        {ordered.map((p) => {
+          const showLine = dragId !== null && overId === p.id && dragId !== p.id
+          return (
+            <div
+              key={p.id}
+              draggable
+              onDragStart={() => setDragId(p.id)}
+              onDragOver={(e) => {
+                e.preventDefault()
+                if (dragId && dragId !== p.id) setOverId(p.id)
+              }}
+              onDragEnd={drop}
+              className="relative pb-4"
+            >
+              {/* linia verde de inserție — arată exact unde va cădea cardul */}
+              {showLine && (
+                <div className="pointer-events-none absolute -top-2 left-0 right-0 z-10 flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full bg-[#58A834]" />
+                  <span className="h-1 flex-1 rounded-full bg-[#58A834]" />
+                </div>
+              )}
+              <div
+                className={`flex items-stretch gap-2 transition-opacity ${
+                  dragId === p.id ? 'opacity-40' : ''
+                }`}
+              >
+                {/* mâner de tragere clar */}
+                <div className="flex w-6 shrink-0 cursor-grab items-center justify-center rounded-xl text-[#C9C5BC] hover:bg-[#EEECE7] hover:text-[#5B6673] active:cursor-grabbing">
+                  <span aria-hidden className="text-lg leading-none">⠿</span>
+                </div>
+                <div className="flex-1">
+                  <ProjectCard p={p} onOpen={() => onOpen(p.id)} />
+                </div>
+              </div>
+            </div>
+          )
+        })}
+        {/* zonă de inserție la finalul listei */}
+        {dragId !== null && (
+          <div
+            onDragOver={(e) => {
+              e.preventDefault()
+              setOverId('__end__')
+            }}
+            className="relative h-8"
+          >
+            {overId === '__end__' && (
+              <div className="pointer-events-none absolute top-0 left-0 right-0 flex items-center gap-2">
+                <span className="h-2.5 w-2.5 rounded-full bg-[#58A834]" />
+                <span className="h-1 flex-1 rounded-full bg-[#58A834]" />
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       <CompanyKpis projects={mainActive} />
+
+      <SmallProjects projects={smallActive} onOpen={onOpen} />
 
       {doneProjects.length > 0 && (
         <div className="pt-2">

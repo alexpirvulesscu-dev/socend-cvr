@@ -42,12 +42,14 @@ function DeliverableRowView({
   done,
   total,
   weight,
+  targetPct,
 }: {
   name: string
   um: string
   done: number
   total: number
   weight: number
+  targetPct: number | null
 }) {
   const p = deliverablePct(done, total)
   return (
@@ -58,7 +60,7 @@ function DeliverableRowView({
           {num(weight)}%
         </span>
       </span>
-      <ProgressBar donePct={p} className="w-28 shrink-0" />
+      <ProgressBar donePct={p} planPct={targetPct ?? undefined} className="w-28 shrink-0" />
       <span className="w-28 shrink-0 text-right">
         <span className="block text-sm font-semibold">
           {num(done)} / {num(total)} {um}
@@ -93,10 +95,22 @@ function TaskCard({
       weight: Number(d.weight),
     }))
   )
-  // Ținta de efort: dacă taskul are oameni-zile planificate, comparăm efortul
-  // consumat (din Pontaj) cu progresul fizic. Efort peste progres = sub randament.
-  const plannedMd = task.planned_man_days == null ? null : Number(task.planned_man_days)
+  // Ținta de efort: oamenii-zile se planifică PE LIVRABIL; planul taskului e
+  // suma lor (cu fallback pe vechiul câmp de la nivel de task). Efortul consumat
+  // vine din Pontaj la nivel de task (nu se poate împărți pe livrabil), deci
+  // linia-țintă (efort consumat / plan) e aceeași pe fiecare bară de livrabil.
+  const deliverablesMd = task.deliverables.reduce(
+    (s, d) => s + (d.planned_man_days == null ? 0 : Number(d.planned_man_days)),
+    0
+  )
+  const plannedMd =
+    deliverablesMd > 0
+      ? deliverablesMd
+      : task.planned_man_days == null
+        ? null
+        : Number(task.planned_man_days)
   const effortPct = plannedMd && plannedMd > 0 ? consumedMd / plannedMd : null
+  const targetLine = effortPct === null ? null : Math.min(effortPct, 1)
   const effortBehind = effortPct !== null && effortPct > pctDone + 0.02
 
   async function changeStatus(status: 'in_lucru' | 'finalizat') {
@@ -131,6 +145,7 @@ function TaskCard({
             done={Number(d.qty_done)}
             total={Number(d.qty_total)}
             weight={Number(d.weight)}
+            targetPct={targetLine}
           />
         ))}
       </div>

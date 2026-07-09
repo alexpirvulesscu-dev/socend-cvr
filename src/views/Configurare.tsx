@@ -22,7 +22,6 @@ interface WTask {
   jobKey: number
   name: string
   value: string
-  manDays: string
 }
 interface WDeliverable {
   key: number
@@ -31,6 +30,7 @@ interface WDeliverable {
   um: string
   qtyTotal: string
   weight: string
+  manDays: string
 }
 
 const EMPTY_BUDGETS: Record<CostCategory, string> = {
@@ -144,7 +144,6 @@ export function ConfigurareView({
           .map((t) => ({
             name: t.name.trim(),
             value: toNumber(t.value),
-            plannedManDays: t.manDays.trim() === '' ? null : toNumber(t.manDays),
             deliverables: delivs
               .filter((d) => d.taskKey === t.key)
               .map((d) => ({
@@ -152,6 +151,7 @@ export function ConfigurareView({
                 um: d.um.trim() || 'buc',
                 qtyTotal: toNumber(d.qtyTotal),
                 weight: toNumber(d.weight),
+                plannedManDays: d.manDays.trim() === '' ? null : toNumber(d.manDays),
               })),
           })),
       })),
@@ -358,18 +358,6 @@ export function ConfigurareView({
                             }
                           />
                         </div>
-                        <div className="w-32">
-                          <label className={labelCls}>Oameni-zile (plan)</label>
-                          <input
-                            className={inputCls}
-                            inputMode="decimal"
-                            value={t.manDays}
-                            placeholder="ex. 12"
-                            onChange={(e) =>
-                              setTasks((old) => old.map((x) => (x.key === t.key ? { ...x, manDays: e.target.value } : x)))
-                            }
-                          />
-                        </div>
                         <button
                           className={`${removeBtnCls} pb-2`}
                           onClick={() => {
@@ -383,7 +371,7 @@ export function ConfigurareView({
                     ))}
                   <button
                     className={addBtnCls}
-                    onClick={() => setTasks((old) => [...old, { key: newKey(), jobKey: j.key, name: '', value: '', manDays: '' }])}
+                    onClick={() => setTasks((old) => [...old, { key: newKey(), jobKey: j.key, name: '', value: '' }])}
                   >
                     + Adaugă task
                   </button>
@@ -463,6 +451,18 @@ export function ConfigurareView({
                             }
                           />
                         </div>
+                        <div className="w-24">
+                          <label className={labelCls}>Oameni-zile</label>
+                          <input
+                            className={inputCls}
+                            inputMode="decimal"
+                            value={d.manDays}
+                            placeholder="ex. 12"
+                            onChange={(e) =>
+                              setDelivs((old) => old.map((x) => (x.key === d.key ? { ...x, manDays: e.target.value } : x)))
+                            }
+                          />
+                        </div>
                         <button
                           className={`${removeBtnCls} pb-2`}
                           onClick={() => setDelivs((old) => old.filter((x) => x.key !== d.key))}
@@ -487,7 +487,7 @@ export function ConfigurareView({
                           const rest = Math.max(0, 100 - used)
                           return [
                             ...old,
-                            { key: newKey(), taskKey: t.key, name: '', um: '', qtyTotal: '', weight: String(rest) },
+                            { key: newKey(), taskKey: t.key, name: '', um: '', qtyTotal: '', weight: String(rest), manDays: '' },
                           ]
                         })
                       }

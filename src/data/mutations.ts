@@ -196,19 +196,13 @@ export async function addJob(
 /** Adaugă un task nou (cu livrabilele lui) pe un job EXISTENT. */
 export async function addTask(
   jobId: string,
-  t: { name: string; value: number; plannedManDays: number | null },
+  t: { name: string; value: number },
   deliverables: DeliverablePatch[],
   sortOrder: number
 ): Promise<void> {
   const { data, error } = await supabase
     .from('tasks')
-    .insert({
-      job_id: jobId,
-      name: t.name,
-      value: t.value,
-      planned_man_days: t.plannedManDays,
-      sort_order: sortOrder,
-    })
+    .insert({ job_id: jobId, name: t.name, value: t.value, sort_order: sortOrder })
     .select('id')
     .single()
   if (error) throw error
@@ -221,6 +215,7 @@ export async function addTask(
         qty_total: d.qtyTotal,
         qty_done: d.qtyDone,
         weight: d.weight,
+        planned_man_days: d.plannedManDays,
         sort_order: i + 1,
       }))
     )
@@ -229,14 +224,8 @@ export async function addTask(
 }
 
 // ── Editarea taskurilor și livrabilelor ──────────────────────────────────
-export async function updateTask(
-  id: string,
-  t: { name: string; value: number; plannedManDays: number | null }
-): Promise<void> {
-  const { error } = await supabase
-    .from('tasks')
-    .update({ name: t.name, value: t.value, planned_man_days: t.plannedManDays })
-    .eq('id', id)
+export async function updateTask(id: string, t: { name: string; value: number }): Promise<void> {
+  const { error } = await supabase.from('tasks').update({ name: t.name, value: t.value }).eq('id', id)
   if (error) throw error
 }
 
@@ -251,12 +240,20 @@ export interface DeliverablePatch {
   qtyTotal: number
   qtyDone: number
   weight: number
+  plannedManDays: number | null
 }
 
 export async function updateDeliverable(id: string, d: DeliverablePatch): Promise<void> {
   const { error } = await supabase
     .from('deliverables')
-    .update({ name: d.name, um: d.um, qty_total: d.qtyTotal, qty_done: d.qtyDone, weight: d.weight })
+    .update({
+      name: d.name,
+      um: d.um,
+      qty_total: d.qtyTotal,
+      qty_done: d.qtyDone,
+      weight: d.weight,
+      planned_man_days: d.plannedManDays,
+    })
     .eq('id', id)
   if (error) throw error
 }
@@ -269,6 +266,7 @@ export async function addDeliverable(taskId: string, d: DeliverablePatch, sortOr
     qty_total: d.qtyTotal,
     qty_done: d.qtyDone,
     weight: d.weight,
+    planned_man_days: d.plannedManDays,
     sort_order: sortOrder,
   })
   if (error) throw error
@@ -286,7 +284,14 @@ interface TaskLike {
   name: string
   value: number
   planned_man_days?: number | null
-  deliverables: { name: string; um: string; qty_total: number; weight: number; sort_order: number }[]
+  deliverables: {
+    name: string
+    um: string
+    qty_total: number
+    weight: number
+    sort_order: number
+    planned_man_days?: number | null
+  }[]
 }
 
 async function insertTaskCopy(jobId: string, t: TaskLike, name: string, sortOrder: number) {
@@ -312,6 +317,7 @@ async function insertTaskCopy(jobId: string, t: TaskLike, name: string, sortOrde
         qty_total: d.qty_total,
         qty_done: 0,
         weight: d.weight,
+        planned_man_days: d.planned_man_days ?? null,
         sort_order: d.sort_order,
       }))
     )
@@ -367,12 +373,12 @@ export interface NewDeliverable {
   um: string
   qtyTotal: number
   weight: number
+  plannedManDays: number | null
 }
 
 export interface NewTask {
   name: string
   value: number
-  plannedManDays: number | null
   deliverables: NewDeliverable[]
 }
 
@@ -449,13 +455,7 @@ export async function createProject(p: NewProject): Promise<string> {
       for (const [ti, task] of job.tasks.entries()) {
         const { data: taskRow, error: taskErr } = await supabase
           .from('tasks')
-          .insert({
-            job_id: jobId,
-            name: task.name,
-            value: task.value,
-            planned_man_days: task.plannedManDays,
-            sort_order: ti + 1,
-          })
+          .insert({ job_id: jobId, name: task.name, value: task.value, sort_order: ti + 1 })
           .select('id')
           .single()
         if (taskErr) throw taskErr
@@ -466,6 +466,7 @@ export async function createProject(p: NewProject): Promise<string> {
           um: d.um,
           qty_total: d.qtyTotal,
           weight: d.weight,
+          planned_man_days: d.plannedManDays,
           sort_order: di + 1,
         }))
         if (delivRows.length > 0) {

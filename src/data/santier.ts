@@ -36,7 +36,7 @@ export async function fetchLabourToday(): Promise<LabourTask[]> {
     .from('tasks')
     .select(
       `id, name, status,
-       deliverables ( id, name, um, qty_total, qty_done, weight, sort_order ),
+       deliverables ( id, name, um, qty_total, qty_done, weight, sort_order, planned_man_days ),
        jobs ( name, projects ( name ) )`
     )
     .in('id', taskIds)
@@ -122,7 +122,7 @@ export async function fetchSkeletonProgress(): Promise<ProgressProject[]> {
          id, name, start_date, end_date, sort_order,
          tasks (
            id, name, status, value, sort_order,
-           deliverables ( id, name, um, qty_total, qty_done, weight, sort_order )
+           deliverables ( id, name, um, qty_total, qty_done, weight, sort_order, planned_man_days )
          )
        )`
     )
