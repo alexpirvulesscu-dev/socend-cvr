@@ -30,6 +30,7 @@ interface WDeliverable {
   um: string
   qtyTotal: string
   weight: string
+  manDays: string
 }
 
 const EMPTY_BUDGETS: Record<CostCategory, string> = {
@@ -69,6 +70,7 @@ export function ConfigurareView({
   const [name, setName] = useState('')
   const [client, setClient] = useState('')
   const [billingMode, setBillingMode] = useState<'stadii_fizice' | 'lunara'>('stadii_fizice')
+  const [isSmall, setIsSmall] = useState(false)
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
 
@@ -129,6 +131,7 @@ export function ConfigurareView({
       billingMode,
       startDate,
       endDate,
+      isSmall,
       jobs: jobs.map((j) => ({
         name: j.name.trim(),
         startDate: j.startDate,
@@ -148,6 +151,7 @@ export function ConfigurareView({
                 um: d.um.trim() || 'buc',
                 qtyTotal: toNumber(d.qtyTotal),
                 weight: toNumber(d.weight),
+                plannedManDays: d.manDays.trim() === '' ? null : toNumber(d.manDays),
               })),
           })),
       })),
@@ -219,6 +223,15 @@ export function ConfigurareView({
                   <input type="date" className={inputCls} value={endDate} onChange={(e) => setEndDate(e.target.value)} />
                 </div>
               </div>
+              <label className="flex cursor-pointer items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={isSmall}
+                  onChange={(e) => setIsSmall(e.target.checked)}
+                  className="h-4 w-4 accent-[#58A834]"
+                />
+                Proiect mic — stă în secțiunea „Proiecte mici", nu în lista principală
+              </label>
             </Card>
           )}
 
@@ -438,6 +451,18 @@ export function ConfigurareView({
                             }
                           />
                         </div>
+                        <div className="w-24">
+                          <label className={labelCls}>Oameni-zile</label>
+                          <input
+                            className={inputCls}
+                            inputMode="decimal"
+                            value={d.manDays}
+                            placeholder="ex. 12"
+                            onChange={(e) =>
+                              setDelivs((old) => old.map((x) => (x.key === d.key ? { ...x, manDays: e.target.value } : x)))
+                            }
+                          />
+                        </div>
                         <button
                           className={`${removeBtnCls} pb-2`}
                           onClick={() => setDelivs((old) => old.filter((x) => x.key !== d.key))}
@@ -454,10 +479,17 @@ export function ConfigurareView({
                     <button
                       className={addBtnCls}
                       onClick={() =>
-                        setDelivs((old) => [
-                          ...old,
-                          { key: newKey(), taskKey: t.key, name: '', um: '', qtyTotal: '', weight: '' },
-                        ])
+                        setDelivs((old) => {
+                          // ponderea nouă se precompletează cu restul până la 100%
+                          const used = old
+                            .filter((d) => d.taskKey === t.key)
+                            .reduce((s, d) => s + toNumber(d.weight), 0)
+                          const rest = Math.max(0, 100 - used)
+                          return [
+                            ...old,
+                            { key: newKey(), taskKey: t.key, name: '', um: '', qtyTotal: '', weight: String(rest), manDays: '' },
+                          ]
+                        })
                       }
                     >
                       + Adaugă livrabil

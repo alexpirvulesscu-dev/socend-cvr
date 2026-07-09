@@ -1,5 +1,8 @@
 // Ecranul de detaliu Job: taskuri cu livrabile, buget vs cost real pe
 // categorii și costurile înregistrate, cu formularul „Adaugă cost".
+// Totul e editabil: jobul (nume/date/bugete), taskurile (nume/valoare/livrabile),
+// se pot adăuga taskuri noi, costurile se pot șterge, iar taskurile finalizate
+// se pot redeschide.
 import { useState } from 'react'
 import {
   COST_CATEGORIES,
@@ -8,18 +11,30 @@ import {
   type JobWithKpis,
   type TaskRow,
 } from '../data/projects'
-import { addCostEntry, setTaskStatus } from '../data/mutations'
+import {
+  addCostEntry,
+  deleteCostEntry,
+  duplicateJob,
+  duplicateTask,
+  setTaskStatus,
+} from '../data/mutations'
+import { useTaskManDays } from '../data/cronologic'
 import { costColor, deliverablePct, scheduleColor, taskPct } from '../domain/kpi'
 import { compact, dataRo, lei, num, pct } from '../lib/format'
 import {
   BackLink,
   Card,
+  DangerButton,
   KpiPill,
   NeutralPill,
   ProgressBar,
   StatusPill,
   scheduleText,
 } from '../components/ui'
+import { JobModal, TaskModal } from './modals'
+
+const inputCls =
+  'rounded-xl border border-[#E8E8E8] bg-white px-3 py-2 text-sm outline-none focus:border-[#58A834]'
 
 function DeliverableRowView({
   name,
@@ -27,12 +42,14 @@ function DeliverableRowView({
   done,
   total,
   weight,
+  targetPct,
 }: {
   name: string
   um: string
   done: number
   total: number
   weight: number
+  targetPct: number | null
 }) {
   const p = deliverablePct(done, total)
   return (
@@ -43,7 +60,7 @@ function DeliverableRowView({
           {num(weight)}%
         </span>
       </span>
-      <ProgressBar donePct={p} className="w-28 shrink-0" />
+      <ProgressBar donePct={p} planPct={targetPct ?? undefined} className="w-28 shrink-0" />
       <span className="w-28 shrink-0 text-right">
         <span className="block text-sm font-semibold">
           {num(done)} / {num(total)} {um}
@@ -57,13 +74,20 @@ function DeliverableRowView({
 function TaskCard({
   task,
   index,
+  jobId,
+  taskCount,
+  consumedMd,
   onChanged,
 }: {
   task: TaskRow
   index: number
+  jobId: string
+  taskCount: number
+  consumedMd: number
   onChanged: () => void
 }) {
   const [busy, setBusy] = useState(false)
+  const [editing, setEditing] = useState(false)
   const pctDone = taskPct(
     task.deliverables.map((d) => ({
       qtyTotal: Number(d.qty_total),
@@ -71,6 +95,23 @@ function TaskCard({
       weight: Number(d.weight),
     }))
   )
+  // Ținta de efort: oamenii-zile se planifică PE LIVRABIL; planul taskului e
+  // suma lor (cu fallback pe vechiul câmp de la nivel de task). Efortul consumat
+  // vine din Pontaj la nivel de task (nu se poate împărți pe livrabil), deci
+  // linia-țintă (efort consumat / plan) e aceeași pe fiecare bară de livrabil.
+  const deliverablesMd = task.deliverables.reduce(
+    (s, d) => s + (d.planned_man_days == null ? 0 : Number(d.planned_man_days)),
+    0
+  )
+  const plannedMd =
+    deliverablesMd > 0
+      ? deliverablesMd
+      : task.planned_man_days == null
+        ? null
+        : Number(task.planned_man_days)
+  const effortPct = plannedMd && plannedMd > 0 ? consumedMd / plannedMd : null
+  const targetLine = effortPct === null ? null : Math.min(effortPct, 1)
+  const effortBehind = effortPct !== null && effortPct > pctDone + 0.02
 
   async function changeStatus(status: 'in_lucru' | 'finalizat') {
     setBusy(true)
@@ -104,6 +145,7 @@ function TaskCard({
             done={Number(d.qty_done)}
             total={Number(d.qty_total)}
             weight={Number(d.weight)}
+            targetPct={targetLine}
           />
         ))}
       </div>
@@ -112,7 +154,26 @@ function TaskCard({
         <strong className="text-[#0D1A2D]">{pct(pctDone)}</strong> din valoarea taskului realizată
       </p>
 
-      <div className="flex gap-2">
+      {/* Ținta de efort (oameni-zile): bara = progres fizic, liniuța = efort consumat */}
+      {plannedMd !== null && plannedMd > 0 && (
+        <div className="rounded-2xl bg-[#FAF9F6] p-3">
+          <div className="flex items-baseline justify-between text-sm">
+            <span className="text-[#5B6673]">
+              Efort: <strong className="text-[#0D1A2D]">{num(consumedMd)}</strong> din{' '}
+              {num(plannedMd)} oameni-zile
+            </span>
+            <span className={`font-medium ${effortBehind ? 'text-[#D64545]' : 'text-[#46862A]'}`}>
+              {effortBehind ? 'sub randament' : 'în ritm'}
+            </span>
+          </div>
+          <ProgressBar donePct={pctDone} planPct={Math.min(effortPct ?? 0, 1)} className="mt-2" />
+          <p className="mt-1 text-xs text-[#5B6673]">
+            bara = progres fizic · liniuța = efort consumat ({pct(effortPct ?? 0, 0)})
+          </p>
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2">
         {task.status === 'neinceput' && (
           <button
             disabled={busy}
@@ -131,7 +192,54 @@ function TaskCard({
             Marchează finalizat
           </button>
         )}
+        {task.status === 'finalizat' && (
+          <button
+            disabled={busy}
+            onClick={() => changeStatus('in_lucru')}
+            className="rounded-full bg-[#EEECE7] px-4 py-2 text-sm font-medium hover:bg-[#E2DFD8] disabled:opacity-50"
+          >
+            Redeschide taskul
+          </button>
+        )}
+        <button
+          onClick={() => setEditing(true)}
+          className="rounded-full border border-[#E8E8E8] bg-white px-4 py-2 text-sm font-medium text-[#5B6673] hover:border-[#58A834] hover:text-[#0D1A2D]"
+        >
+          Editează
+        </button>
+        <button
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true)
+            try {
+              await duplicateTask(jobId, task, taskCount + 1)
+              onChanged()
+            } finally {
+              setBusy(false)
+            }
+          }}
+          className="rounded-full border border-[#E8E8E8] bg-white px-4 py-2 text-sm font-medium text-[#5B6673] hover:border-[#58A834] hover:text-[#0D1A2D] disabled:opacity-50"
+        >
+          Duplică
+        </button>
       </div>
+
+      {editing && (
+        <TaskModal
+          jobId={task.id /* nefolosit la editare */}
+          task={task}
+          sortOrder={index + 1}
+          onClose={() => setEditing(false)}
+          onSaved={() => {
+            setEditing(false)
+            onChanged()
+          }}
+          onDeleted={() => {
+            setEditing(false)
+            onChanged()
+          }}
+        />
+      )}
     </Card>
   )
 }
@@ -196,9 +304,6 @@ function AdaugaCost({ jobId, onAdded }: { jobId: string; onAdded: () => void }) 
     }
   }
 
-  const inputCls =
-    'rounded-xl border border-[#E8E8E8] bg-white px-3 py-2 text-sm outline-none focus:border-[#58A834]'
-
   return (
     <form onSubmit={submit} className="mt-4 space-y-3 border-t border-[#E8E8E8] pt-4">
       <h4 className="text-sm font-semibold">Adaugă cost</h4>
@@ -251,17 +356,27 @@ function AdaugaCost({ jobId, onAdded }: { jobId: string; onAdded: () => void }) 
 
 export function JobView({
   job,
+  projectId,
   projectName,
+  jobsCount,
   onBack,
   onChanged,
   onCronologic,
+  onJobDeleted,
 }: {
   job: JobWithKpis
+  projectId: string
   projectName: string
+  jobsCount: number
   onBack: () => void
   onChanged: () => void
   onCronologic: () => void
+  onJobDeleted: () => void
 }) {
+  const [editing, setEditing] = useState(false)
+  const [addingTask, setAddingTask] = useState(false)
+  const [duplicating, setDuplicating] = useState(false)
+  const manDays = useTaskManDays(job.tasks.map((t) => t.id))
   const k = job.kpis
   const costOk = costColor(k.costVariance)
   const inLucru = job.tasks.filter((t) => t.status === 'in_lucru').length
@@ -269,14 +384,72 @@ export function JobView({
     <div className="mx-auto max-w-6xl space-y-4 px-6 py-6">
       <BackLink label={projectName} onClick={onBack} />
 
+      {editing && (
+        <JobModal
+          projectId={projectId}
+          job={job}
+          sortOrder={0}
+          onClose={() => setEditing(false)}
+          onSaved={() => {
+            setEditing(false)
+            onChanged()
+          }}
+          onDeleted={onJobDeleted}
+        />
+      )}
+      {addingTask && (
+        <TaskModal
+          jobId={job.id}
+          sortOrder={job.tasks.length + 1}
+          onClose={() => setAddingTask(false)}
+          onSaved={() => {
+            setAddingTask(false)
+            onChanged()
+          }}
+        />
+      )}
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold">{job.name}</h1>
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => setEditing(true)}
+            className="rounded-full border border-[#E8E8E8] bg-white px-4 py-1.5 text-sm font-medium hover:border-[#58A834]"
+          >
+            Editează
+          </button>
           <button
             onClick={onCronologic}
             className="rounded-full border border-[#E8E8E8] bg-white px-4 py-1.5 text-sm font-medium hover:border-[#58A834]"
           >
             Vedere cronologică
+          </button>
+          <button
+            disabled={duplicating}
+            onClick={async () => {
+              setDuplicating(true)
+              try {
+                await duplicateJob(
+                  projectId,
+                  {
+                    name: job.name,
+                    start_date: job.start_date,
+                    end_date: job.end_date,
+                    tasks: job.tasks,
+                    budgets: job.budgetByCategory,
+                  },
+                  jobsCount + 1
+                )
+                // înapoi la proiect, ca să vezi copia lângă original
+                onChanged()
+                onBack()
+              } finally {
+                setDuplicating(false)
+              }
+            }}
+            className="rounded-full border border-[#E8E8E8] bg-white px-4 py-1.5 text-sm font-medium hover:border-[#58A834] disabled:opacity-50"
+          >
+            {duplicating ? 'Se duplică…' : 'Duplică jobul'}
           </button>
           <KpiPill color={scheduleColor(k.behindDays)}>{scheduleText(k.behindDays)}</KpiPill>
           <KpiPill color={costOk}>
@@ -305,14 +478,32 @@ export function JobView({
       {/* Pe ecrane late: taskurile pe stânga, banii (buget + costuri) pe dreapta */}
       <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[1fr_400px]">
         <div className="space-y-3">
-          <h3 className="pt-2 text-base font-semibold">Taskuri</h3>
+          <div className="flex items-center justify-between pt-2">
+            <h3 className="text-base font-semibold">Taskuri</h3>
+            <button
+              onClick={() => setAddingTask(true)}
+              className="rounded-full bg-[#DDEDDC] px-4 py-1.5 text-sm font-medium text-[#46862A] hover:bg-[#CBE3C9]"
+            >
+              + Adaugă task
+            </button>
+          </div>
           {job.tasks.length === 0 && (
             <Card>
-              <p className="text-sm text-[#5B6673]">Jobul nu are încă taskuri configurate.</p>
+              <p className="text-sm text-[#5B6673]">
+                Jobul nu are încă taskuri. Apasă „+ Adaugă task" ca să definești primul.
+              </p>
             </Card>
           )}
           {job.tasks.map((t, i) => (
-            <TaskCard key={t.id} task={t} index={i} onChanged={onChanged} />
+            <TaskCard
+              key={t.id}
+              task={t}
+              index={i}
+              jobId={job.id}
+              taskCount={job.tasks.length}
+              consumedMd={manDays[t.id] ?? 0}
+              onChanged={onChanged}
+            />
           ))}
         </div>
 
@@ -333,6 +524,14 @@ export function JobView({
                       <span className="w-28 shrink-0">{COST_CATEGORY_LABELS[c.category]}</span>
                       <span className="flex-1 truncate text-[#5B6673]">{c.description}</span>
                       <span className="shrink-0 font-medium">{lei(Number(c.amount))}</span>
+                      <DangerButton
+                        label="✕"
+                        armedLabel="Sigur?"
+                        onConfirmed={async () => {
+                          await deleteCostEntry(c.id)
+                          onChanged()
+                        }}
+                      />
                     </div>
                   ))}
               </div>

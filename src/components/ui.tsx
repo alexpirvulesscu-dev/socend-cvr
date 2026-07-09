@@ -1,6 +1,6 @@
-// Componente UI comune — carduri albe fără border, pastile, bare de progres.
-// Stil: Apple-like, conform src/design/tokens.ts.
-import type { ReactNode } from 'react'
+// Componente UI comune — carduri albe fără border, pastile, bare de progres,
+// modale și butoane de ștergere cu confirmare. Stil: Apple-like, conform tokens.
+import { useEffect, useState, type ReactNode } from 'react'
 import type { KpiColor, TaskStatus } from '../domain/kpi'
 import { STATUS_LABELS } from '../data/projects'
 import { zile } from '../lib/format'
@@ -101,6 +101,82 @@ export function NeutralPill({ children }: { children: ReactNode }) {
     <span className="inline-flex items-center whitespace-nowrap rounded-full bg-[#EEECE7] px-2.5 py-1 text-xs font-medium text-[#5B6673]">
       {children}
     </span>
+  )
+}
+
+/** Fereastră modală simplă, în stilul cardurilor: overlay + card centrat. */
+export function Modal({
+  title,
+  onClose,
+  children,
+}: {
+  title: string
+  onClose: () => void
+  children: ReactNode
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[#0D1A2D]/30 p-4 backdrop-blur-sm sm:items-center"
+      onClick={onClose}
+    >
+      <div
+        className="my-8 w-full max-w-2xl rounded-[20px] bg-white p-6 shadow-[0_2px_4px_rgba(13,26,45,0.06),0_12px_32px_rgba(13,26,45,0.10)]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="text-lg font-semibold">{title}</h3>
+          <button
+            onClick={onClose}
+            aria-label="Închide"
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-[#EEECE7] text-[#5B6673] hover:text-[#0D1A2D]"
+          >
+            ✕
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Buton de ștergere cu confirmare prin dublă apăsare: prima apăsare îl
+ * transformă în „Sigur? Apasă din nou", a doua execută. Fără dialoguri de browser.
+ */
+export function DangerButton({
+  label,
+  onConfirmed,
+  className = '',
+  armedLabel = 'Sigur? Apasă din nou',
+}: {
+  label: string
+  onConfirmed: () => void
+  className?: string
+  armedLabel?: string
+}) {
+  const [armed, setArmed] = useState(false)
+  useEffect(() => {
+    if (!armed) return
+    const t = setTimeout(() => setArmed(false), 4000)
+    return () => clearTimeout(t)
+  }, [armed])
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        if (armed) {
+          setArmed(false)
+          onConfirmed()
+        } else {
+          setArmed(true)
+        }
+      }}
+      className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+        armed ? 'bg-[#D64545] text-white' : 'bg-[#F8DEDE] text-[#B23A3A] hover:bg-[#F3CACA]'
+      } ${className}`}
+    >
+      {armed ? armedLabel : label}
+    </button>
   )
 }
 
