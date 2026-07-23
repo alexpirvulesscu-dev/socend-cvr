@@ -1,6 +1,8 @@
 // Stratul de date: citește arborele Proiect → Joburi → Taskuri → Livrabile
 // din Supabase și atașează KPI-urile calculate cu funcțiile pure din domain/kpi.
-import { useCallback, useEffect, useState } from 'react'
+// v3: starea stă într-un reducer cu `patchEntity` — actualizări optimiste pe un
+// singur rând + recalcul local de KPI-uri, fără refetch de arbore la fiecare salvare.
+import { useCallback, useEffect, useReducer } from 'react'
 import { supabase } from '../lib/supabase'
 import {
   jobKpis,
@@ -62,6 +64,10 @@ export interface TaskRow {
   status: TaskStatus
   sort_order: number
   planned_man_days: number | null
+  // datele de plan pentru Gantt (0014); null = task fără plan propriu,
+  // moștenește vizual fereastra jobului părinte
+  start_date: string | null
+  end_date: string | null
   deliverables: DeliverableRow[]
 }
 
@@ -181,7 +187,8 @@ function toJobInput(job: JobRow): JobInput {
   }
 }
 
-function decorateProject(p: ProjectRow, today: string): ProjectWithKpis {
+/** Sortează nivelele și calculează KPI-urile unui proiect citit din DB. (exportat pentru teste) */
+export function decorateProject(p: ProjectRow, today: string): ProjectWithKpis {
   const jobs = [...p.jobs]
     .sort((a, b) => a.sort_order - b.sort_order)
     .map((j) => ({
@@ -214,33 +221,71 @@ function decorateProject(p: ProjectRow, today: string): ProjectWithKpis {
 }
 
 /**
- * Recalculează KPI-urile de cost/marjă ale proiectelor folosind costul real din
- * P&L (când există) în locul costurilor manuale. „Bugetul câștigat" (buget × %
- * realizat) rămâne referința; costul devine cel din P&L.
+ * Aplică pe UN proiect costul real din P&L (când există). „Bugetul câștigat"
+ * (buget × % realizat) rămâne referința; costul devine cel din P&L.
+ * Costul din P&L se aplică DOAR proiectelor legate de P&L (pnl_proiect_id) —
+ * proiectele demo/nelegate păstrează costurile manuale, ca să nu arate fals.
  */
+function applyPnlCost(
+  p: ProjectWithKpis,
+  costByProject: Map<string, PnlCosts> | null
+): ProjectWithKpis {
+  if (!costByProject || !p.pnl_proiect_id) return p
+  const c = costByProject.get(p.id)
+  if (!c) return p
+  const earnedBudget = p.kpis.costVariance + p.kpis.actualCost // buget × %realizat
+  const ev = p.kpis.ev
+  return {
+    ...p,
+    pnlCosts: c,
+    kpis: {
+      ...p.kpis,
+      actualCost: c.total,
+      costVariance: earnedBudget - c.total,
+      margin: ev > 0 ? (ev - c.total) / ev : 0,
+    },
+  }
+}
+
+/** Varianta pe listă (folosită la încărcare și în teste). */
 export function mergePnlCosts(
   projects: ProjectWithKpis[],
   costByProject: Map<string, PnlCosts>
 ): ProjectWithKpis[] {
-  return projects.map((p) => {
-    // costul din P&L se aplică DOAR proiectelor legate de P&L (pnl_proiect_id).
-    // Proiectele demo/nelegate păstrează costurile manuale, ca să nu arate fals.
-    if (!p.pnl_proiect_id) return p
-    const c = costByProject.get(p.id)
-    if (!c) return p
-    const earnedBudget = p.kpis.costVariance + p.kpis.actualCost // buget × %realizat
-    const ev = p.kpis.ev
-    return {
-      ...p,
-      pnlCosts: c,
-      kpis: {
-        ...p.kpis,
-        actualCost: c.total,
-        costVariance: earnedBudget - c.total,
-        margin: ev > 0 ? (ev - c.total) / ev : 0,
-      },
-    }
-  })
+  return projects.map((p) => applyPnlCost(p, costByProject))
+}
+
+/**
+ * Recalculează KPI-urile unui proiect DUPĂ un patch local (fără refetch):
+ * re-sortează nivelele, re-rulează funcțiile pure de KPI și re-aplică costul
+ * din P&L păstrat în memorie. Ieftin — se rulează doar pe proiectul atins.
+ */
+export function redecorateProject(
+  p: ProjectWithKpis,
+  pnlMap: Map<string, PnlCosts> | null,
+  today: string
+): ProjectWithKpis {
+  const jobs = [...p.jobs]
+    .sort((a, b) => a.sort_order - b.sort_order)
+    .map((j) => ({
+      ...j,
+      tasks: [...j.tasks]
+        .sort((a, b) => a.sort_order - b.sort_order)
+        .map((t) => ({
+          ...t,
+          deliverables: [...t.deliverables].sort((a, b) => a.sort_order - b.sort_order),
+        })),
+      kpis: jobKpis(toJobInput(j), today),
+      budgetByCategory: sumByCategory(j.cvr_job_budgets),
+      costByCategory: sumByCategory(j.cvr_cost_entries),
+    }))
+  const base: ProjectWithKpis = {
+    ...p,
+    jobs,
+    kpis: projectKpis(jobs.map(toJobInput), p.billing, today),
+    pnlCosts: null,
+  }
+  return applyPnlCost(base, pnlMap)
 }
 
 /** Costurile din P&L, pe proiect (RPC security-definer, doar admin/finance). */
@@ -273,7 +318,7 @@ const TREE_SELECT = `
   jobs (
     id, name, start_date, end_date, sort_order,
     tasks (
-      id, name, value, status, sort_order, planned_man_days,
+      id, name, value, status, sort_order, planned_man_days, start_date, end_date,
       deliverables ( id, name, um, qty_total, qty_done, weight, sort_order, planned_man_days )
     ),
     cvr_job_budgets ( category, amount ),
@@ -294,32 +339,148 @@ export async function fetchProjectTree(): Promise<ProjectWithKpis[]> {
   return ((data ?? []) as unknown as ProjectRow[]).map((p) => decorateProject(p, today))
 }
 
-/** Hook React: lista proiectelor cu KPI-uri (cost real din P&L) + stare. */
+// ── Reducer-ul arborelui + patch-uri optimiste ───────────────────────────
+
+/**
+ * Un patch optimist pe UN rând din arbore. Se aplică imediat în memorie
+ * (KPI-urile proiectului atins se recalculează local), iar persistarea în
+ * Supabase se face separat, în fundal. La eroare: se aplică patch-ul invers
+ * (apelantul cunoaște valorile vechi) + toast.
+ */
+export type EntityPatch =
+  | { kind: 'project'; id: string; patch: Partial<Omit<ProjectRow, 'jobs' | 'cvr_billing'>> }
+  | { kind: 'billing'; id: string; patch: Partial<BillingInput> } // id = projectId
+  | { kind: 'job'; id: string; patch: Partial<Omit<JobRow, 'tasks'>> }
+  | { kind: 'task'; id: string; patch: Partial<TaskRow> }
+  | { kind: 'deliverable'; id: string; patch: Partial<DeliverableRow> }
+
+export interface TreeState {
+  projects: ProjectWithKpis[]
+  loading: boolean
+  error: string | null
+  // costurile P&L păstrate în memorie, ca redecorateProject să le poată
+  // re-aplica după fiecare patch fără să re-cheme RPC-ul
+  pnlMap: Map<string, PnlCosts> | null
+}
+
+export type TreeAction =
+  | { type: 'loading' }
+  | { type: 'loaded'; projects: ProjectWithKpis[]; pnlMap: Map<string, PnlCosts> | null }
+  | { type: 'error'; message: string }
+  | { type: 'patched'; patch: EntityPatch; today: string }
+
+/** Aplică un patch pe un proiect. Întoarce null dacă entitatea nu e în acest proiect. */
+function patchProject(p: ProjectWithKpis, a: EntityPatch): ProjectWithKpis | null {
+  switch (a.kind) {
+    case 'project':
+      return p.id === a.id ? { ...p, ...a.patch } : null
+    case 'billing':
+      return p.id === a.id ? { ...p, billing: { ...p.billing, ...a.patch } } : null
+    case 'job': {
+      if (!p.jobs.some((j) => j.id === a.id)) return null
+      return { ...p, jobs: p.jobs.map((j) => (j.id === a.id ? { ...j, ...a.patch } : j)) }
+    }
+    case 'task': {
+      if (!p.jobs.some((j) => j.tasks.some((t) => t.id === a.id))) return null
+      return {
+        ...p,
+        jobs: p.jobs.map((j) =>
+          j.tasks.some((t) => t.id === a.id)
+            ? { ...j, tasks: j.tasks.map((t) => (t.id === a.id ? { ...t, ...a.patch } : t)) }
+            : j
+        ),
+      }
+    }
+    case 'deliverable': {
+      const has = (t: TaskRow) => t.deliverables.some((d) => d.id === a.id)
+      if (!p.jobs.some((j) => j.tasks.some(has))) return null
+      return {
+        ...p,
+        jobs: p.jobs.map((j) =>
+          j.tasks.some(has)
+            ? {
+                ...j,
+                tasks: j.tasks.map((t) =>
+                  has(t)
+                    ? {
+                        ...t,
+                        deliverables: t.deliverables.map((d) =>
+                          d.id === a.id ? { ...d, ...a.patch } : d
+                        ),
+                      }
+                    : t
+                ),
+              }
+            : j
+        ),
+      }
+    }
+  }
+}
+
+/** Reducer pur (exportat pentru teste). Proiectele neatinse își păstrează identitatea. */
+export function treeReducer(state: TreeState, action: TreeAction): TreeState {
+  switch (action.type) {
+    case 'loading':
+      return { ...state, loading: true, error: null }
+    case 'loaded':
+      return { projects: action.projects, loading: false, error: null, pnlMap: action.pnlMap }
+    case 'error':
+      return { ...state, loading: false, error: action.message }
+    case 'patched':
+      return {
+        ...state,
+        projects: state.projects.map((p) => {
+          const patched = patchProject(p, action.patch)
+          return patched ? redecorateProject(patched, state.pnlMap, action.today) : p
+        }),
+      }
+  }
+}
+
+/** Hook React: lista proiectelor cu KPI-uri (cost real din P&L) + stare + patch optimist. */
 export function useProjectTree() {
-  const [projects, setProjects] = useState<ProjectWithKpis[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [state, dispatch] = useReducer(treeReducer, {
+    projects: [],
+    loading: true,
+    error: null,
+    pnlMap: null,
+  })
 
   const refetch = useCallback(() => {
-    setLoading(true)
-    setError(null)
+    dispatch({ type: 'loading' })
     fetchProjectTree()
       .then(async (tree) => {
         // costurile P&L sunt un plus: dacă RPC-ul eșuează, arătăm arborele fără ele
+        let pnlMap: Map<string, PnlCosts> | null = null
         try {
-          const costs = await fetchPnlCosts()
-          setProjects(mergePnlCosts(tree, costs))
+          pnlMap = await fetchPnlCosts()
         } catch {
-          setProjects(tree)
+          pnlMap = null
         }
+        dispatch({
+          type: 'loaded',
+          projects: pnlMap ? mergePnlCosts(tree, pnlMap) : tree,
+          pnlMap,
+        })
       })
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false))
+      .catch((e: Error) => dispatch({ type: 'error', message: e.message }))
+  }, [])
+
+  /** Patch optimist: aplică imediat în memorie și recalculează KPI-urile local. */
+  const patchEntity = useCallback((patch: EntityPatch) => {
+    dispatch({ type: 'patched', patch, today: todayIso() })
   }, [])
 
   useEffect(() => {
     refetch()
   }, [refetch])
 
-  return { projects, loading, error, refetch }
+  return {
+    projects: state.projects,
+    loading: state.loading,
+    error: state.error,
+    refetch,
+    patchEntity,
+  }
 }

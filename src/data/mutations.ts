@@ -223,6 +223,41 @@ export async function addTask(
   }
 }
 
+// ── Mutații ÎNGUSTE de date (Gantt + editare inline) ─────────────────────
+// Separate deliberat de updateJob/updateTask: barele din Gantt scriu DOAR
+// datele, fără să tragă după ele bugetele sau alte câmpuri.
+
+/** Doar fereastra de plan a unui job. NU atinge bugetele (spre deosebire de updateJob). */
+export async function updateJobDates(id: string, startDate: string, endDate: string): Promise<void> {
+  const { error } = await supabase
+    .from('jobs')
+    .update({ start_date: startDate, end_date: endDate })
+    .eq('id', id)
+  if (error) throw error
+}
+
+/** Doar fereastra de plan a unui task (bara lui din Gantt). */
+export async function updateTaskDates(id: string, startDate: string, endDate: string): Promise<void> {
+  const { error } = await supabase
+    .from('tasks')
+    .update({ start_date: startDate, end_date: endDate })
+    .eq('id', id)
+  if (error) throw error
+}
+
+/**
+ * Mutarea unui job cu tot cu taskurile lui (drag pe bara de job în Gantt).
+ * Apelantul calculează noile date; aici doar se persistă tot lotul.
+ */
+export async function shiftJobWithTasks(
+  jobId: string,
+  jobDates: { startDate: string; endDate: string },
+  taskDates: { id: string; startDate: string; endDate: string }[]
+): Promise<void> {
+  await updateJobDates(jobId, jobDates.startDate, jobDates.endDate)
+  await Promise.all(taskDates.map((t) => updateTaskDates(t.id, t.startDate, t.endDate)))
+}
+
 // ── Editarea taskurilor și livrabilelor ──────────────────────────────────
 export async function updateTask(id: string, t: { name: string; value: number }): Promise<void> {
   const { error } = await supabase.from('tasks').update({ name: t.name, value: t.value }).eq('id', id)
@@ -284,6 +319,8 @@ interface TaskLike {
   name: string
   value: number
   planned_man_days?: number | null
+  start_date?: string | null
+  end_date?: string | null
   deliverables: {
     name: string
     um: string
@@ -302,6 +339,9 @@ async function insertTaskCopy(jobId: string, t: TaskLike, name: string, sortOrde
       name,
       value: t.value,
       planned_man_days: t.planned_man_days ?? null,
+      // copia păstrează planul de timp al originalului (șablon de planificare)
+      start_date: t.start_date ?? null,
+      end_date: t.end_date ?? null,
       status: 'neinceput',
       sort_order: sortOrder,
     })

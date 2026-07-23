@@ -53,6 +53,34 @@ export function dataRo(iso: string): string {
   })
 }
 
+/**
+ * Parsează un număr tastat în format românesc (SINGURUL parser din aplicație —
+ * înlocuiește copiile divergente din modals/Configurare, dintre care una citea
+ * „2.500" ca 2,5).
+ *  - „2.500" → 2500 · „1.234.567" → 1234567 (punct = separator de mii)
+ *  - „35,4" → 35.4 · „2.500,75" → 2500.75 (virgulă = zecimală)
+ *  - „2.5" → 2.5 (un singur punct care NU e urmat de exact 3 cifre = zecimală
+ *    tastată în stil englezesc — o acceptăm ca să nu pedepsim obiceiul)
+ * Gol sau invalid → 0.
+ */
+export function toNum(s: string): number {
+  let t = s.trim().replace(/\s/g, '')
+  if (!t) return 0
+  if (t.includes(',')) {
+    // format românesc complet: mii cu punct, zecimale cu virgulă
+    t = t.replace(/\./g, '').replace(',', '.')
+  } else {
+    const dots = t.match(/\./g)?.length ?? 0
+    if (!(dots === 1 && !/\.\d{3}$/.test(t))) {
+      // toate punctele sunt separatori de mii („2.500", „1.234.567")
+      t = t.replace(/\./g, '')
+    }
+    // altfel: un singur punct ne-urmat de exact 3 cifre → zecimală, rămâne
+  }
+  const v = Number(t)
+  return Number.isFinite(v) ? v : 0
+}
+
 /** Ziua de azi, pentru header-ul de șantier: „Luni, 6 iulie" */
 export function ziuaDeAzi(): string {
   const s = new Date().toLocaleDateString('ro-RO', {

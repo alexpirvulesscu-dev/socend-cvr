@@ -21,16 +21,12 @@ import {
   updateJob,
   updateTask,
 } from '../data/mutations'
-import { num } from '../lib/format'
+import { num, toNum } from '../lib/format'
 import { DangerButton, Modal } from '../components/ui'
 
 const inputCls =
   'w-full rounded-xl border border-[#E8E8E8] bg-white px-3 py-2 text-sm outline-none focus:border-[#58A834]'
 const labelCls = 'mb-1 block text-xs font-medium text-[#5B6673]'
-
-function toNum(s: string): number {
-  return Number(s.replace(/\./g, '').replace(',', '.')) || 0
-}
 
 // ── Job: creare sau editare ───────────────────────────────────────────────
 export function JobModal({

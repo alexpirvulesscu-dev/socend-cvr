@@ -6,7 +6,9 @@
 import { useMemo, useRef, useState } from 'react'
 import { COST_CATEGORIES, COST_CATEGORY_LABELS, type CostCategory } from '../data/projects'
 import { createProject, type NewProject } from '../data/mutations'
-import { lei, num } from '../lib/format'
+// toNum e parserul UNIC de numere românești (înlocuiește vechiul toNumber local,
+// care citea „2.500" ca 2,5 — bug de introducere de date în wizard)
+import { lei, num, toNum as toNumber } from '../lib/format'
 import { BackLink, Card } from '../components/ui'
 
 // ── Starea wizard-ului (totul client-side până la Salvează) ──────────────
@@ -49,11 +51,6 @@ const labelCls = 'mb-1 block text-xs font-medium text-[#5B6673]'
 const addBtnCls =
   'rounded-full bg-[#DDEDDC] px-4 py-2 text-sm font-medium text-[#46862A] hover:bg-[#CBE3C9]'
 const removeBtnCls = 'text-xs font-medium text-[#D64545] hover:underline'
-
-function toNumber(s: string): number {
-  const v = Number(s.replace(',', '.'))
-  return Number.isFinite(v) ? v : 0
-}
 
 export function ConfigurareView({
   onDone,
