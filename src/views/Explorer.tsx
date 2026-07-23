@@ -9,7 +9,7 @@ import type { EntityPatch } from '../data/projects'
 import { addJob, addTask, setJobsOrder, setProjectsOrder, setTasksOrder } from '../data/mutations'
 import { taskPct } from '../domain/kpi'
 import { compact, dataRo, pct, toNum } from '../lib/format'
-import { KpiPill, ProgressBar, StatusPill, scheduleText } from '../components/ui'
+import { KpiPill, NeutralPill, ProgressBar, StatusPill, scheduleText } from '../components/ui'
 import { toast } from '../components/Toast'
 import type { Selection } from '../lib/selection'
 import { KpiBand } from './ExplorerKpis'
@@ -181,17 +181,51 @@ function ProjectRow({ p, selected, showValue }: { p: ProjectWithKpis; selected: 
   )
 }
 
+/** Agregatul „Proiecte mici": finalizare 0–100 + câștig/pierdere (cerut în runda 3). */
+function SmallAggregate({ projects }: { projects: ProjectWithKpis[] }) {
+  const value = projects.reduce((s, p) => s + Number(p.contract_value), 0)
+  const ev = projects.reduce((s, p) => s + p.kpis.ev, 0)
+  const cost = projects.reduce((s, p) => s + p.kpis.actualCost, 0)
+  const completion = value > 0 ? ev / value : 0
+  const planWeighted =
+    value > 0
+      ? projects.reduce((s, p) => s + p.kpis.planPct * Number(p.contract_value), 0) / value
+      : 0
+  const result = ev - cost
+  const margin = ev > 0 ? result / ev : 0
+  return (
+    <div className="mx-0.5 rounded-xl bg-white/70 px-3 py-2">
+      <div className="flex items-baseline justify-between text-xs">
+        <span className="text-[#5B6673]">
+          {projects.length === 1 ? 'un proiect' : `${projects.length} proiecte`} ·{' '}
+          {compact(value)} lei
+        </span>
+        <span className="font-semibold tabular-nums">{pct(completion, 0)}</span>
+      </div>
+      <ProgressBar donePct={completion} planPct={planWeighted} className="mt-1.5 !h-1.5" />
+      <div className="mt-1.5 flex flex-wrap gap-1">
+        <KpiPill color={result >= 0 ? 'good' : 'error'}>
+          {result >= 0 ? `+${compact(result)} câștigați` : `${compact(result)} pierduți`}
+        </KpiPill>
+        <NeutralPill>Marjă {pct(margin)}</NeutralPill>
+      </div>
+    </div>
+  )
+}
+
 function ProjectsColumn({
   projects,
   sel,
   onSelect,
   onNew,
+  patchEntity,
   className,
 }: {
   projects: ProjectWithKpis[]
   sel: Selection
   onSelect: (projectId: string | undefined) => void
   onNew: () => void
+  patchEntity: (p: EntityPatch) => void
   className?: string
 }) {
   const mainActive = useMemo(() => projects.filter((p) => p.active && !p.is_small), [projects])
@@ -203,12 +237,16 @@ function ProjectsColumn({
   const byId = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects])
   const dnd = useDragOrder(
     mainActive.map((p) => p.id),
-    (next) =>
+    (next) => {
+      // patch optimist: fără el, ordinea din memorie rămâne cea veche și
+      // coloana ar reveni la ea la remount (până la un refetch complet)
+      next.forEach((id, i) => patchEntity({ kind: 'project', id, patch: { sort_order: i + 1 } }))
       void setProjectsOrder([
         ...next,
         ...smallActive.map((p) => p.id),
         ...done.map((p) => p.id),
       ]).catch((e: Error) => toast(`Ordinea nu s-a salvat: ${e.message}`))
+    }
   )
   const ordered = dnd.order.map((id) => byId.get(id)).filter(Boolean) as ProjectWithKpis[]
 
@@ -278,6 +316,7 @@ function ProjectsColumn({
               ›
             </span>
           </button>
+          <SmallAggregate projects={smallActive} />
           {showSmall &&
             smallActive.map((p) => (
               <Row
@@ -325,11 +364,13 @@ function JobsColumn({
   sel,
   onSelect,
   onRefetch,
+  patchEntity,
 }: {
   project: ProjectWithKpis
   sel: Selection
   onSelect: (jobId: string | undefined) => void
   onRefetch: () => void
+  patchEntity: (p: EntityPatch) => void
 }) {
   const [adding, setAdding] = useState(false)
   const [name, setName] = useState('')
@@ -340,7 +381,10 @@ function JobsColumn({
   const byId = useMemo(() => new Map(project.jobs.map((j) => [j.id, j])), [project.jobs])
   const dnd = useDragOrder(
     project.jobs.map((j) => j.id),
-    (next) => void setJobsOrder(next).catch((e: Error) => toast(`Ordinea nu s-a salvat: ${e.message}`))
+    (next) => {
+      next.forEach((id, i) => patchEntity({ kind: 'job', id, patch: { sort_order: i + 1 } }))
+      void setJobsOrder(next).catch((e: Error) => toast(`Ordinea nu s-a salvat: ${e.message}`))
+    }
   )
   const ordered = dnd.order.map((id) => byId.get(id)).filter(Boolean) as JobWithKpis[]
 
@@ -348,7 +392,7 @@ function JobsColumn({
     if (!name.trim() || !start || !end) return
     setBusy(true)
     try {
-      await addJob(
+      const id = await addJob(
         project.id,
         { name: name.trim(), startDate: start, endDate: end },
         { manopera: 0, utilaje: 0, materiale: 0, subcontractori: 0, organizare: 0 },
@@ -357,6 +401,8 @@ function JobsColumn({
       setAdding(false)
       setName('')
       onRefetch()
+      // jobul nou se deschide direct în Detaliu, ca să-i completezi bugetele
+      onSelect(id)
     } catch (e) {
       toast(`Jobul nu s-a creat: ${(e as Error).message}`)
     } finally {
@@ -496,11 +542,13 @@ function TasksColumn({
   sel,
   onSelect,
   onRefetch,
+  patchEntity,
 }: {
   job: JobWithKpis
   sel: Selection
   onSelect: (taskId: string | undefined) => void
   onRefetch: () => void
+  patchEntity: (p: EntityPatch) => void
 }) {
   const [adding, setAdding] = useState(false)
   const [name, setName] = useState('')
@@ -510,7 +558,10 @@ function TasksColumn({
   const byId = useMemo(() => new Map(job.tasks.map((t) => [t.id, t])), [job.tasks])
   const dnd = useDragOrder(
     job.tasks.map((t) => t.id),
-    (next) => void setTasksOrder(next).catch((e: Error) => toast(`Ordinea nu s-a salvat: ${e.message}`))
+    (next) => {
+      next.forEach((id, i) => patchEntity({ kind: 'task', id, patch: { sort_order: i + 1 } }))
+      void setTasksOrder(next).catch((e: Error) => toast(`Ordinea nu s-a salvat: ${e.message}`))
+    }
   )
   const ordered = dnd.order.map((id) => byId.get(id)).filter(Boolean) as TaskRow[]
 
@@ -518,11 +569,18 @@ function TasksColumn({
     if (!name.trim()) return
     setBusy(true)
     try {
-      await addTask(job.id, { name: name.trim(), value: toNum(value) }, [], job.tasks.length + 1)
+      const id = await addTask(
+        job.id,
+        { name: name.trim(), value: toNum(value) },
+        [],
+        job.tasks.length + 1
+      )
       setAdding(false)
       setName('')
       setValue('')
       onRefetch()
+      // taskul nou se deschide direct în Detaliu, ca să-i adaugi livrabilele
+      onSelect(id)
     } catch (e) {
       toast(`Taskul nu s-a creat: ${(e as Error).message}`)
     } finally {
@@ -739,6 +797,7 @@ export function ExplorerView({
           sel={sel}
           onSelect={(projectId) => onSelect(projectId ? { projectId } : {})}
           onNew={onNewProject}
+          patchEntity={patchEntity}
           className={task ? 'hidden 2xl:flex' : 'flex'}
         />
         {task && (
@@ -761,6 +820,7 @@ export function ExplorerView({
               onSelect(jobId ? { projectId: project.id, jobId } : { projectId: project.id })
             }
             onRefetch={onRefetch}
+            patchEntity={patchEntity}
           />
         )}
         {project && job && (
@@ -775,6 +835,7 @@ export function ExplorerView({
               )
             }
             onRefetch={onRefetch}
+            patchEntity={patchEntity}
           />
         )}
         <DetailPanel

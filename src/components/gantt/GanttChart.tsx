@@ -267,13 +267,18 @@ export function GanttChart({
     return out
   }, [range])
 
-  // derulează la „azi" când se schimbă zoom-ul / fereastra
+  // derulează la „azi" DOAR când se schimbă scopul sau zoom-ul — nu și când
+  // fereastra se recalculează după o tragere (ar smulge scroll-ul din mână)
+  const scrolledFor = useRef('')
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
+    const key = `${scopeKey}|${zoom}`
+    if (scrolledFor.current === key) return
+    scrolledFor.current = key
     const x = dayIndex(range.start, today) * dayWidth
     el.scrollLeft = Math.max(0, x - (el.clientWidth - LABEL_W) / 3)
-  }, [range.start, dayWidth, today])
+  }, [range.start, dayWidth, today, scopeKey, zoom])
 
   // Escape anulează tragerea în curs
   useEffect(() => {
@@ -319,15 +324,16 @@ export function GanttChart({
     if (r.kind === 'job' && r.job) {
       const j = r.job
       if (d.mode === 'move') {
-        // jobul se mută cu tot cu taskurile lui (doar cele cu date proprii au
-        // ce muta — cele-fantomă moștenesc oricum fereastra jobului)
+        // jobul se mută cu tot cu taskurile lui. Se deplasează DOAR datele pe
+        // care taskul le are cu adevărat: o latură null („ca jobul") rămâne
+        // null — altfel mutarea ar „îngheța" pe ascuns moștenirea ferestrei.
         const delta = d.deltaDays
         const shifted = j.tasks
           .filter((t) => t.start_date !== null || t.end_date !== null)
           .map((t) => ({
             id: t.id,
-            startDate: t.start_date ? addDays(t.start_date, delta) : addDays(j.start_date, delta),
-            endDate: t.end_date ? addDays(t.end_date, delta) : addDays(j.end_date, delta),
+            startDate: t.start_date ? addDays(t.start_date, delta) : null,
+            endDate: t.end_date ? addDays(t.end_date, delta) : null,
           }))
         patchEntity({ kind: 'job', id: j.id, patch: { start_date: newStart, end_date: newEnd } })
         for (const s of shifted)
@@ -378,13 +384,21 @@ export function GanttChart({
       setDrag({ ...drag, deltaDays: d, moved })
   }
 
-  function onBarPointerUp(r: GRow) {
+  function onBarPointerUp(e: React.PointerEvent, r: GRow) {
+    // pointerup-ul retargetat pe mâner BULEȘTE spre bară — fără stopPropagation
+    // comiterea ar rula de două ori (două scrieri Supabase pe fiecare resize)
+    e.stopPropagation()
     if (!drag) return
-    if (!drag.moved) {
-      selectRow(r) // a fost un click, nu o tragere
-    } else if (drag.deltaDays !== 0) {
+    if (drag.deltaDays === 0) {
+      selectRow(r) // click sau tremur sub o zi — nu o tragere reală
+    } else if (drag.moved) {
       commitDrag(drag)
     }
+    setDrag(null)
+  }
+
+  /** OS-ul poate anula gestul (apel, notificare, gest de margine) — curățăm starea. */
+  function onBarPointerCancel() {
     setDrag(null)
   }
 
@@ -420,7 +434,7 @@ export function GanttChart({
           <button
             onClick={() => setLookahead((l) => !l)}
             className={`mr-2 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-              lookahead ? 'bg-[#115468] text-white' : 'bg-[#EEECE7] text-[#5B6673] hover:text-[#0D1A2D]'
+              lookahead ? 'bg-[#14263F] text-white' : 'bg-[#EEECE7] text-[#5B6673] hover:text-[#0D1A2D]'
             }`}
           >
             Următoarele 2 săptămâni
@@ -516,8 +530,9 @@ export function GanttChart({
                     }}
                   />
                 )}
+                {/* linia de azi — navy închis (tealul e rezervat header-ului Șantier) */}
                 <div
-                  className="absolute inset-y-0 w-0.5 bg-[#115468]"
+                  className="absolute inset-y-0 w-0.5 bg-[#14263F]"
                   style={{ left: todayX + dayWidth / 2 }}
                   title={`Azi · ${dataRo(today)}`}
                 />
@@ -559,7 +574,7 @@ export function GanttChart({
                       {r.caret ? (
                         <button
                           onClick={() => toggleCaret(r.key)}
-                          aria-label={r.collapsed ? 'Desfă' : 'Pliază'}
+                          aria-label={r.collapsed ? 'Extinde' : 'Restrânge'}
                           className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[#5B6673] hover:bg-[#EEECE7]"
                         >
                           <span
@@ -608,12 +623,13 @@ export function GanttChart({
                         <div
                           onPointerDown={(e) => onBarPointerDown(e, r, 'move')}
                           onPointerMove={onBarPointerMove}
-                          onPointerUp={() => onBarPointerUp(r)}
+                          onPointerUp={(e) => onBarPointerUp(e, r)}
+                          onPointerCancel={onBarPointerCancel}
                           className={`group absolute top-1/2 -translate-y-1/2 select-none rounded-lg ${
                             r.kind === 'job' ? 'h-4 bg-[#B9C6D6]' : 'h-5 bg-[#DDEDDC]'
                           } ${r.ghost ? 'border border-dashed border-[#5B6673] !bg-transparent' : ''} ${
                             r.outside ? 'ring-2 ring-[#F0A800]' : ''
-                          } ${isDragging ? 'z-30 shadow-lg ring-2 ring-[#58A834]' : ''} cursor-grab active:cursor-grabbing`}
+                          } ${isDragging ? 'z-10 shadow-lg ring-2 ring-[#58A834]' : ''} cursor-grab active:cursor-grabbing`}
                           style={{ left: geom.left, width: Math.max(geom.width, 6), touchAction: 'none' }}
                           title={`${r.label} · ${dataRo(
                             isDragging && drag
@@ -637,7 +653,8 @@ export function GanttChart({
                           <div
                             onPointerDown={(e) => onBarPointerDown(e, r, 'resize-l')}
                             onPointerMove={onBarPointerMove}
-                            onPointerUp={() => onBarPointerUp(r)}
+                            onPointerUp={(e) => onBarPointerUp(e, r)}
+                            onPointerCancel={onBarPointerCancel}
                             className="absolute -left-1 top-0 h-full w-2.5 cursor-ew-resize rounded-l-lg opacity-0 transition-opacity group-hover:opacity-100"
                             style={{ touchAction: 'none' }}
                           >
@@ -646,7 +663,8 @@ export function GanttChart({
                           <div
                             onPointerDown={(e) => onBarPointerDown(e, r, 'resize-r')}
                             onPointerMove={onBarPointerMove}
-                            onPointerUp={() => onBarPointerUp(r)}
+                            onPointerUp={(e) => onBarPointerUp(e, r)}
+                            onPointerCancel={onBarPointerCancel}
                             className="absolute -right-1 top-0 h-full w-2.5 cursor-ew-resize rounded-r-lg opacity-0 transition-opacity group-hover:opacity-100"
                             style={{ touchAction: 'none' }}
                           >
@@ -665,7 +683,7 @@ export function GanttChart({
 
       <p className="border-t border-[#F3F1EC] px-5 py-2.5 text-xs text-[#5B6673]">
         Trage bara ca să muți · trage capetele ca să scurtezi/lungești · mutarea unui job își mută
-        și taskurile · bara de proiect e calculată din joburi · liniuța teal = azi
+        și taskurile · bara de proiect e calculată din joburi · linia verticală = azi
       </p>
     </div>
   )

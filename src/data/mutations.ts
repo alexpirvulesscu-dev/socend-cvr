@@ -193,13 +193,13 @@ export async function deleteJob(id: string): Promise<void> {
   if (error) throw error
 }
 
-/** Adaugă un job nou pe un proiect EXISTENT (ex. proiectele importate din Pontaj). */
+/** Adaugă un job nou pe un proiect EXISTENT. Întoarce id-ul, ca UI-ul să îl poată selecta. */
 export async function addJob(
   projectId: string,
   j: { name: string; startDate: string; endDate: string },
   budgets: Record<CostCategory, number>,
   sortOrder: number
-): Promise<void> {
+): Promise<string> {
   const { data, error } = await supabase
     .from('jobs')
     .insert({
@@ -219,15 +219,16 @@ export async function addJob(
     const { error: bErr } = await supabase.from('cvr_job_budgets').insert(rows)
     if (bErr) throw bErr
   }
+  return data.id as string
 }
 
-/** Adaugă un task nou (cu livrabilele lui) pe un job EXISTENT. */
+/** Adaugă un task nou (cu livrabilele lui) pe un job EXISTENT. Întoarce id-ul. */
 export async function addTask(
   jobId: string,
   t: { name: string; value: number },
   deliverables: DeliverablePatch[],
   sortOrder: number
-): Promise<void> {
+): Promise<string> {
   const { data, error } = await supabase
     .from('tasks')
     .insert({ job_id: jobId, name: t.name, value: t.value, sort_order: sortOrder })
@@ -249,6 +250,7 @@ export async function addTask(
     )
     if (dErr) throw dErr
   }
+  return data.id as string
 }
 
 // ── Mutații ÎNGUSTE de date (Gantt + editare inline) ─────────────────────
@@ -284,7 +286,8 @@ export async function updateTaskDates(
 export async function shiftJobWithTasks(
   jobId: string,
   jobDates: { startDate: string; endDate: string },
-  taskDates: { id: string; startDate: string; endDate: string }[]
+  // null = latura respectivă rămâne „ca jobul" (nu se scrie o dată concretă)
+  taskDates: { id: string; startDate: string | null; endDate: string | null }[]
 ): Promise<void> {
   await updateJobDates(jobId, jobDates.startDate, jobDates.endDate)
   await Promise.all(taskDates.map((t) => updateTaskDates(t.id, t.startDate, t.endDate)))
