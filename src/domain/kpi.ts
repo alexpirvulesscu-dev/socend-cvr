@@ -15,6 +15,10 @@ export interface TaskInput {
   value: number // valoarea contractată a taskului, lei
   status: TaskStatus
   deliverables: DeliverableInput[]
+  // datele de plan ale taskului (v3, pentru Gantt); lipsă/null = taskul
+  // moștenește fereastra jobului părinte — numeric identic cu formula veche
+  startDate?: string | null
+  endDate?: string | null
 }
 
 export interface JobInput {
@@ -128,11 +132,30 @@ export interface JobKpis {
   margin: number
 }
 
+/**
+ * plan_pct al unui job, RAFINAT cu datele taskurilor (v3): media ponderată cu
+ * valoarea a plan_pct-urilor taskurilor, fiecare task căzând pe fereastra
+ * jobului când nu are date proprii. Fără taskuri (sau valoare 0) → formula
+ * veche pe fereastra jobului. Taskurile backfill-uite cu fereastra jobului dau
+ * EXACT același număr ca înainte — KPI-urile nu sar la migrare.
+ */
+export function jobPlanPct(job: JobInput, today: string): number {
+  const value = jobValue(job)
+  if (value <= 0) return planPct(job.startDate, job.endDate, today)
+  let weighted = 0
+  for (const t of job.tasks) {
+    const start = t.startDate ?? job.startDate
+    const end = t.endDate ?? job.endDate
+    weighted += t.value * planPct(start, end, today)
+  }
+  return weighted / value
+}
+
 export function jobKpis(job: JobInput, today: string): JobKpis {
   const value = jobValue(job)
   const ev = jobEV(job)
   const donePct = jobDonePct(job)
-  const plan = planPct(job.startDate, job.endDate, today)
+  const plan = jobPlanPct(job, today)
   return {
     value,
     ev,

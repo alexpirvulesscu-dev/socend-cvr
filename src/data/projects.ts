@@ -178,6 +178,8 @@ function toJobInput(job: JobRow): JobInput {
     tasks: job.tasks.map((t) => ({
       value: Number(t.value),
       status: t.status,
+      startDate: t.start_date,
+      endDate: t.end_date,
       deliverables: t.deliverables.map((d) => ({
         qtyTotal: Number(d.qty_total),
         qtyDone: Number(d.qty_done),

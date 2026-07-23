@@ -8,6 +8,7 @@ import {
   costVariance,
   deliverablePct,
   jobKpis,
+  jobPlanPct,
   margin,
   marginColor,
   planPct,
@@ -172,5 +173,45 @@ describe('culorile KPI (pragurile din CLAUDE.md)', () => {
     expect(cashColor(0.9)).toBe('good')
     expect(cashColor(0.8)).toBe('warning')
     expect(cashColor(0.69)).toBe('error')
+  })
+})
+
+describe('jobPlanPct — rafinarea v3 cu datele taskurilor', () => {
+  const base = {
+    startDate: '2026-07-01',
+    endDate: '2026-07-21', // 20 de zile → azi (11 iul.) = 50% plan pe fereastra jobului
+    budgetTotal: 0,
+    actualCost: 0,
+  }
+  const TODAY = '2026-07-11'
+  const deliv = [{ qtyDone: 0, qtyTotal: 1, weight: 100 }]
+
+  it('taskuri fără date proprii → identic cu formula veche pe fereastra jobului', () => {
+    const job = {
+      ...base,
+      tasks: [
+        { value: 100, status: 'in_lucru' as const, deliverables: deliv },
+        { value: 300, status: 'neinceput' as const, deliverables: deliv },
+      ],
+    }
+    expect(Math.abs(jobPlanPct(job, TODAY) - planPct(base.startDate, base.endDate, TODAY))).toBeLessThanOrEqual(0.001)
+  })
+
+  it('taskurile cu date proprii mută planul (medie ponderată cu valoarea)', () => {
+    const job = {
+      ...base,
+      tasks: [
+        // task terminat ca plan: 1–11 iul. → plan 100%
+        { value: 100, status: 'in_lucru' as const, deliverables: deliv, startDate: '2026-07-01', endDate: '2026-07-11' },
+        // task viitor: 21–31 iul. → plan 0%
+        { value: 100, status: 'neinceput' as const, deliverables: deliv, startDate: '2026-07-21', endDate: '2026-07-31' },
+      ],
+    }
+    expect(Math.abs(jobPlanPct(job, TODAY) - 0.5)).toBeLessThanOrEqual(0.001)
+  })
+
+  it('fără taskuri → fereastra jobului', () => {
+    const job = { ...base, tasks: [] }
+    expect(Math.abs(jobPlanPct(job, TODAY) - 0.5)).toBeLessThanOrEqual(0.001)
   })
 })

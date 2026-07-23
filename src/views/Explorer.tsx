@@ -14,6 +14,8 @@ import { toast } from '../components/Toast'
 import type { Selection } from '../lib/selection'
 import { KpiBand } from './ExplorerKpis'
 import { DetailPanel } from './ExplorerDetail'
+import { GanttChart } from '../components/gantt/GanttChart'
+import { todayIso } from '../data/projects'
 import { scheduleColor } from '../domain/kpi'
 
 // ── Salvarea optimistă: patch → persistă; la eroare: revert + toast ──────
@@ -728,7 +730,10 @@ export function ExplorerView({
       {/* Coloanele: apar pe măsură ce cobori; Detaliu ocupă restul.
           Sub 2xl, când un task e selectat, coloana Proiecte se pliază într-o
           fâșie îngustă — spațiul îi trebuie panoului de livrabile. */}
-      <div className="flex min-h-0 items-stretch gap-3" style={{ height: 'calc(100vh - 320px)', minHeight: 420 }}>
+      <div
+        className="flex min-h-0 items-stretch gap-3"
+        style={{ height: 'clamp(380px, calc(100vh - 540px), 600px)' }}
+      >
         <ProjectsColumn
           projects={projects}
           sel={sel}
@@ -783,6 +788,15 @@ export function ExplorerView({
           onOpenCronologic={onOpenCronologic}
         />
       </div>
+
+      {/* Gantt-ul interactiv — scoput selecției: portofoliu / proiect / job */}
+      <GanttChart
+        projects={projects}
+        sel={sel}
+        onSelect={onSelect}
+        patchEntity={patchEntity}
+        today={todayIso()}
+      />
     </div>
   )
 }
