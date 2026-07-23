@@ -105,6 +105,34 @@ export async function setProjectsOrder(idsInOrder: string[]): Promise<void> {
   }
 }
 
+/** Persistă ordinea joburilor în cadrul unui proiect (drag & drop în coloană). */
+export async function setJobsOrder(idsInOrder: string[]): Promise<void> {
+  for (const [i, id] of idsInOrder.entries()) {
+    const { error } = await supabase.from('jobs').update({ sort_order: i + 1 }).eq('id', id)
+    if (error) throw error
+  }
+}
+
+/** Persistă ordinea taskurilor în cadrul unui job (drag & drop în coloană). */
+export async function setTasksOrder(idsInOrder: string[]): Promise<void> {
+  for (const [i, id] of idsInOrder.entries()) {
+    const { error } = await supabase.from('tasks').update({ sort_order: i + 1 }).eq('id', id)
+    if (error) throw error
+  }
+}
+
+/** O singură celulă de buget a unui job (editare inline în „Buget vs cost"). */
+export async function updateJobBudget(
+  jobId: string,
+  category: CostCategory,
+  amount: number
+): Promise<void> {
+  const { error } = await supabase
+    .from('cvr_job_budgets')
+    .upsert({ job_id: jobId, category, amount }, { onConflict: 'job_id,category' })
+  if (error) throw error
+}
+
 /** Finalizează / reactivează proiectul (bucket-ul „Finalizate") + sincron P&L. */
 export async function setProjectActive(
   id: string,
@@ -236,8 +264,12 @@ export async function updateJobDates(id: string, startDate: string, endDate: str
   if (error) throw error
 }
 
-/** Doar fereastra de plan a unui task (bara lui din Gantt). */
-export async function updateTaskDates(id: string, startDate: string, endDate: string): Promise<void> {
+/** Doar fereastra de plan a unui task (bara lui din Gantt). null = fără plan propriu. */
+export async function updateTaskDates(
+  id: string,
+  startDate: string | null,
+  endDate: string | null
+): Promise<void> {
   const { error } = await supabase
     .from('tasks')
     .update({ start_date: startDate, end_date: endDate })

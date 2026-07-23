@@ -1,22 +1,17 @@
 import { useState } from 'react'
 import { useProjectTree } from './data/projects'
 import { useAuth, signOut, type Role } from './lib/auth'
-import { ProiecteView } from './views/Proiecte'
-import { ProiectView } from './views/Proiect'
-import { JobView } from './views/Job'
+import { resolveSelection, type Selection } from './lib/selection'
+import { ExplorerView } from './views/Explorer'
 import { SantierView } from './views/Santier'
 import { ConfigurareView } from './views/Configurare'
 import { LoginView } from './views/Login'
 import { CronologicView } from './views/Cronologic'
+import { Toasts } from './components/Toast'
 
-// Navigare prin stare (fără router), ca în celelalte aplicații Socend.
-type Route =
-  | { view: 'proiecte' }
-  | { view: 'proiect'; projectId: string }
-  | { view: 'job'; projectId: string; jobId: string }
-  | { view: 'cronologic'; projectId: string; jobId: string }
-  | { view: 'santier' }
-  | { view: 'config' }
+// v3: biroul are UN singur ecran (Explorer, coloane Miller) + Cronologic +
+// wizard-ul de proiect nou. Navigarea rămâne prin stare, fără router.
+type Screen = 'explorer' | 'santier' | 'config' | 'cronologic'
 
 function TopBar({
   section,
@@ -35,7 +30,7 @@ function TopBar({
     }`
   return (
     <header className="sticky top-0 z-10 border-b border-[#E8E8E8]/60 bg-[rgba(250,249,246,0.8)] backdrop-blur-xl">
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-2.5">
+      <div className="mx-auto flex max-w-[1800px] items-center justify-between px-6 py-2.5">
         <span className="flex items-center gap-2.5">
           <img src="/logo-socend.png" alt="Socend Construct" className="h-10 w-auto" />
           <span className="rounded-md bg-[#DDEDDC] px-2 py-1 text-sm font-bold tracking-wide text-[#46862A]">
@@ -67,14 +62,15 @@ function TopBar({
   )
 }
 
-/** Aplicația de birou (admin, finance): proiecte + șantier + configurare. */
+/** Aplicația de birou (admin, finance): Explorer + șantier + configurare. */
 function OfficeApp({ role, email }: { role: Role; email: string }) {
-  const [route, setRoute] = useState<Route>({ view: 'proiecte' })
-  const { projects, loading, error, refetch } = useProjectTree()
+  const [screen, setScreen] = useState<Screen>('explorer')
+  const [sel, setSel] = useState<Selection>({})
+  const { projects, loading, error, refetch, patchEntity } = useProjectTree()
 
-  const section = route.view === 'santier' ? 'santier' : 'birou'
+  const section = screen === 'santier' ? 'santier' : 'birou'
   const onSection = (s: 'birou' | 'santier') =>
-    setRoute(s === 'santier' ? { view: 'santier' } : { view: 'proiecte' })
+    setScreen(s === 'santier' ? 'santier' : 'explorer')
 
   // Ecranul global de încărcare apare DOAR la prima citire; refetch-urile de
   // fundal (ex. după închiderea zilei) nu demontează ecranul curent.
@@ -95,70 +91,45 @@ function OfficeApp({ role, email }: { role: Role; email: string }) {
     )
   }
 
-  const project =
-    route.view === 'proiect' || route.view === 'job' || route.view === 'cronologic'
-      ? projects.find((p) => p.id === route.projectId)
-      : undefined
+  // selecția „reparată": dacă o entitate a dispărut, urcăm la strămoșul viu
+  const resolved = resolveSelection(projects, sel)
+  const project = resolved.projectId
+    ? projects.find((p) => p.id === resolved.projectId)
+    : undefined
   const job =
-    (route.view === 'job' || route.view === 'cronologic') && project
-      ? project.jobs.find((j) => j.id === route.jobId)
-      : undefined
+    project && resolved.jobId ? project.jobs.find((j) => j.id === resolved.jobId) : undefined
+  // cronologicul are nevoie de job; dacă a dispărut între timp, cădem pe explorer
+  const effScreen: Screen = screen === 'cronologic' && (!project || !job) ? 'explorer' : screen
 
   return (
     <>
       <TopBar section={section} onSection={onSection} role={role} email={email} />
-      {route.view === 'santier' && <SantierView onDataChanged={refetch} />}
-      {route.view === 'config' && (
+      {effScreen === 'santier' && <SantierView onDataChanged={refetch} />}
+      {effScreen === 'config' && (
         <ConfigurareView
           onDone={() => {
             refetch()
-            setRoute({ view: 'proiecte' })
+            setScreen('explorer')
           }}
-          onCancel={() => setRoute({ view: 'proiecte' })}
+          onCancel={() => setScreen('explorer')}
         />
       )}
-      {route.view === 'proiecte' && (
-        <ProiecteView
+      {effScreen === 'explorer' && (
+        <ExplorerView
           projects={projects}
-          onOpen={(projectId) => setRoute({ view: 'proiect', projectId })}
-          onNew={() => setRoute({ view: 'config' })}
-          onChanged={refetch}
-        />
-      )}
-      {route.view === 'proiect' && project && (
-        <ProiectView
-          project={project}
-          onBack={() => setRoute({ view: 'proiecte' })}
-          onOpenJob={(jobId) => setRoute({ view: 'job', projectId: project.id, jobId })}
-          onChanged={refetch}
-          onDeleted={() => {
-            refetch()
-            setRoute({ view: 'proiecte' })
+          sel={resolved}
+          onSelect={setSel}
+          patchEntity={patchEntity}
+          onRefetch={refetch}
+          onNewProject={() => setScreen('config')}
+          onOpenCronologic={(projectId, jobId) => {
+            setSel({ projectId, jobId })
+            setScreen('cronologic')
           }}
         />
       )}
-      {route.view === 'job' && project && job && (
-        <JobView
-          job={job}
-          projectId={project.id}
-          projectName={project.name}
-          jobsCount={project.jobs.length}
-          onBack={() => setRoute({ view: 'proiect', projectId: project.id })}
-          onChanged={refetch}
-          onCronologic={() =>
-            setRoute({ view: 'cronologic', projectId: project.id, jobId: job.id })
-          }
-          onJobDeleted={() => {
-            refetch()
-            setRoute({ view: 'proiect', projectId: project.id })
-          }}
-        />
-      )}
-      {route.view === 'cronologic' && project && job && (
-        <CronologicView
-          job={job}
-          onBack={() => setRoute({ view: 'job', projectId: project.id, jobId: job.id })}
-        />
+      {effScreen === 'cronologic' && project && job && (
+        <CronologicView job={job} onBack={() => setScreen('explorer')} />
       )}
     </>
   )
@@ -186,10 +157,20 @@ function App() {
 
   const email = session.user.email ?? ''
   if (role === 'site') {
-    return <SiteApp role={role} email={email} />
+    return (
+      <>
+        <SiteApp role={role} email={email} />
+        <Toasts />
+      </>
+    )
   }
   if (role === 'admin' || role === 'finance') {
-    return <OfficeApp role={role} email={email} />
+    return (
+      <>
+        <OfficeApp role={role} email={email} />
+        <Toasts />
+      </>
+    )
   }
   // utilizator autentificat dar fără rol CVR atribuit
   return (
