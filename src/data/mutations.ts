@@ -279,6 +279,15 @@ export async function updateTaskDates(
   if (error) throw error
 }
 
+/** Data-țintă de facturare a taskului (0016). null = neplanificat. */
+export async function updateTaskInvoiceDate(id: string, date: string | null): Promise<void> {
+  const { error } = await supabase
+    .from('tasks')
+    .update({ target_invoice_date: date })
+    .eq('id', id)
+  if (error) throw error
+}
+
 /**
  * Mutarea unui job cu tot cu taskurile lui (drag pe bara de job în Gantt).
  * Apelantul calculează noile date; aici doar se persistă tot lotul.

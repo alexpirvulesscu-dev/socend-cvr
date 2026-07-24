@@ -43,6 +43,8 @@ interface GRow {
   outside?: boolean
   caret?: boolean
   collapsed?: boolean
+  /** data-țintă de facturare (doar taskuri); un romb pe pistă */
+  invoiceDate?: string | null
   projectId: string
   jobId?: string
   /** pentru comiterea mutării unui job (cu taskurile lui) */
@@ -90,6 +92,7 @@ function taskRowOf(p: ProjectWithKpis, j: JobWithKpis, t: TaskRow, depth: 0 | 1 
     editable: true,
     ghost: t.start_date === null && t.end_date === null,
     outside,
+    invoiceDate: t.target_invoice_date,
     projectId: p.id,
     jobId: j.id,
     task: t,
@@ -715,6 +718,21 @@ export function GanttChart({
                           </div>
                         </div>
                       )}
+                      {/* ținta de facturare — romb pe pistă la data planificată */}
+                      {r.kind === 'task' &&
+                        r.invoiceDate &&
+                        r.invoiceDate >= range.start &&
+                        (() => {
+                          const x =
+                            dayIndex(range.start, r.invoiceDate) * dayWidth + dayWidth / 2
+                          return (
+                            <div
+                              className="absolute top-1/2 z-10 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rotate-45 border border-white bg-[#115468]"
+                              style={{ left: x }}
+                              title={`Facturare țintă · ${dataRo(r.invoiceDate)}`}
+                            />
+                          )
+                        })()}
                     </div>
                   </div>
                 )
@@ -735,6 +753,10 @@ export function GanttChart({
         <span className="flex items-center gap-1.5">
           <span className="h-2.5 w-4 rounded-full ring-2 ring-[#F0A800]" />
           în afara jobului
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rotate-45 bg-[#115468]" />
+          facturare țintă
         </span>
         <span className="ml-auto">
           Trage bara ca să muți · trage capetele ca să scurtezi/lungești · mutarea unui job îi mută

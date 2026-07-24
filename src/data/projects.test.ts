@@ -49,6 +49,7 @@ function makeRawProject(over: Partial<ProjectRow> = {}): ProjectRow {
             planned_man_days: null,
             start_date: '2026-07-01',
             end_date: '2026-07-20',
+            target_invoice_date: null,
             deliverables: [
               {
                 id: 'd1',

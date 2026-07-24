@@ -31,6 +31,7 @@ import {
   updateProject,
   updateTask,
   updateTaskDates,
+  updateTaskInvoiceDate,
 } from '../data/mutations'
 import { useTaskManDays } from '../data/cronologic'
 import { deliverablePct, taskPct } from '../domain/kpi'
@@ -896,8 +897,8 @@ function TaskDetail({
           </div>
         </div>
 
-        {/* Datele de plan ale taskului (bara lui din Gantt) */}
-        <div className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
+        {/* Datele de plan ale taskului (bara lui din Gantt) + ținta de facturare */}
+        <div className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 lg:grid-cols-5">
           <div>
             <FieldLabel>Început plan</FieldLabel>
             <InlineEdit
@@ -930,6 +931,34 @@ function TaskDetail({
                   { kind: 'task', id: task.id, patch: { end_date: raw || null } },
                   { kind: 'task', id: task.id, patch: { end_date: task.end_date } },
                   () => updateTaskDates(task.id, task.start_date, raw || null)
+                )
+              }
+            />
+          </div>
+          <div>
+            <FieldLabel>Facturare țintă</FieldLabel>
+            <InlineEdit
+              type="date"
+              value={task.target_invoice_date ?? ''}
+              placeholder="neplanificat"
+              display={
+                <span className="text-sm">
+                  {task.target_invoice_date ? (
+                    dataRo(task.target_invoice_date)
+                  ) : (
+                    <span className="text-[#C9C5BC]">neplanificat</span>
+                  )}
+                </span>
+              }
+              onSave={(raw) =>
+                save(
+                  { kind: 'task', id: task.id, patch: { target_invoice_date: raw || null } },
+                  {
+                    kind: 'task',
+                    id: task.id,
+                    patch: { target_invoice_date: task.target_invoice_date },
+                  },
+                  () => updateTaskInvoiceDate(task.id, raw || null)
                 )
               }
             />

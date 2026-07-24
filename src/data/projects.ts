@@ -68,6 +68,8 @@ export interface TaskRow {
   // moștenește vizual fereastra jobului părinte
   start_date: string | null
   end_date: string | null
+  // data-țintă la care planificăm să facturăm taskul (0016); null = neplanificat
+  target_invoice_date: string | null
   deliverables: DeliverableRow[]
 }
 
@@ -320,7 +322,7 @@ const TREE_SELECT = `
   jobs (
     id, name, start_date, end_date, sort_order,
     tasks (
-      id, name, value, status, sort_order, planned_man_days, start_date, end_date,
+      id, name, value, status, sort_order, planned_man_days, start_date, end_date, target_invoice_date,
       deliverables ( id, name, um, qty_total, qty_done, weight, sort_order, planned_man_days )
     ),
     cvr_job_budgets ( category, amount ),
