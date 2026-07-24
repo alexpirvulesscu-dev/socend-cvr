@@ -14,8 +14,6 @@ import { toast } from '../components/Toast'
 import type { Selection } from '../lib/selection'
 import { KpiBand } from './ExplorerKpis'
 import { DetailPanel } from './ExplorerDetail'
-import { GanttChart } from '../components/gantt/GanttChart'
-import { todayIso } from '../data/projects'
 import { scheduleColor } from '../domain/kpi'
 
 // ── Salvarea optimistă: patch → persistă; la eroare: revert + toast ──────
@@ -91,7 +89,9 @@ function Column({
         </h2>
         {action}
       </div>
-      <div className="min-h-0 flex-1 space-y-1 overflow-y-auto rounded-2xl bg-white/60 p-1.5 shadow-[0_1px_2px_rgba(13,26,45,0.03)]">
+      {/* panoul cald al coloanei — cardurile albe din interior „ies" din el,
+          așa fiecare proiect/job/task se citește ca bloc propriu */}
+      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto rounded-2xl bg-[#F1EEE9] p-2">
         {children}
       </div>
     </div>
@@ -127,11 +127,11 @@ function Row({
             onClick()
           }
         }}
-        className={`cursor-pointer rounded-xl px-3 py-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#58A834] ${
+        className={`cursor-pointer rounded-xl bg-white px-3 py-2 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-[#58A834] ${
           selected
-            ? 'bg-white shadow-[0_1px_2px_rgba(13,26,45,0.05),0_4px_12px_rgba(13,26,45,0.07)]'
-            : 'hover:bg-white/80'
-        } ${dimmed ? 'opacity-60' : ''}`}
+            ? 'shadow-[0_1px_2px_rgba(13,26,45,0.06),0_6px_16px_rgba(13,26,45,0.10)] ring-1 ring-[#58A834]'
+            : 'shadow-[0_1px_2px_rgba(13,26,45,0.04)] hover:shadow-[0_2px_8px_rgba(13,26,45,0.09)]'
+        } ${dimmed ? 'opacity-70' : ''}`}
       >
         {children}
       </div>
@@ -194,20 +194,21 @@ function SmallAggregate({ projects }: { projects: ProjectWithKpis[] }) {
   const result = ev - cost
   const margin = ev > 0 ? result / ev : 0
   return (
-    <div className="mx-0.5 rounded-xl bg-white/70 px-3 py-2">
-      <div className="flex items-baseline justify-between text-xs">
+    <div className="rounded-2xl bg-white px-4 py-3 shadow-[0_1px_2px_rgba(13,26,45,0.04)]">
+      <div className="flex items-baseline justify-between text-sm">
         <span className="text-[#5B6673]">
-          {projects.length === 1 ? 'un proiect' : `${projects.length} proiecte`} ·{' '}
-          {compact(value)} lei
+          {projects.length === 1 ? 'un proiect mic' : `${projects.length} proiecte mici`} ·{' '}
+          {compact(value)} lei în total
         </span>
         <span className="font-semibold tabular-nums">{pct(completion, 0)}</span>
       </div>
-      <ProgressBar donePct={completion} planPct={planWeighted} className="mt-1.5 !h-1.5" />
-      <div className="mt-1.5 flex flex-wrap gap-1">
+      <ProgressBar donePct={completion} planPct={planWeighted} className="mt-2" />
+      <div className="mt-2 flex flex-wrap gap-2">
         <KpiPill color={result >= 0 ? 'good' : 'error'}>
-          {result >= 0 ? `+${compact(result)} câștigați` : `${compact(result)} pierduți`}
+          {result >= 0 ? `+${compact(result)} lei câștigați` : `${compact(result)} lei pierduți`}
         </KpiPill>
         <NeutralPill>Marjă {pct(margin)}</NeutralPill>
+        <NeutralPill>cost {compact(cost)} lei</NeutralPill>
       </div>
     </div>
   )
@@ -228,11 +229,10 @@ function ProjectsColumn({
   patchEntity: (p: EntityPatch) => void
   className?: string
 }) {
+  // Coloana principală ține DOAR proiectele active mari (munca de zi cu zi).
+  // Cele mici și cele finalizate stau într-o secțiune separată, jos în pagină.
   const mainActive = useMemo(() => projects.filter((p) => p.active && !p.is_small), [projects])
-  const smallActive = useMemo(() => projects.filter((p) => p.active && p.is_small), [projects])
-  const done = useMemo(() => projects.filter((p) => !p.active), [projects])
-  const [showSmall, setShowSmall] = useState(false)
-  const [showDone, setShowDone] = useState(false)
+  const rest = useMemo(() => projects.filter((p) => !(p.active && !p.is_small)), [projects])
 
   const byId = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects])
   const dnd = useDragOrder(
@@ -241,22 +241,12 @@ function ProjectsColumn({
       // patch optimist: fără el, ordinea din memorie rămâne cea veche și
       // coloana ar reveni la ea la remount (până la un refetch complet)
       next.forEach((id, i) => patchEntity({ kind: 'project', id, patch: { sort_order: i + 1 } }))
-      void setProjectsOrder([
-        ...next,
-        ...smallActive.map((p) => p.id),
-        ...done.map((p) => p.id),
-      ]).catch((e: Error) => toast(`Ordinea nu s-a salvat: ${e.message}`))
+      void setProjectsOrder([...next, ...rest.map((p) => p.id)]).catch((e: Error) =>
+        toast(`Ordinea nu s-a salvat: ${e.message}`)
+      )
     }
   )
   const ordered = dnd.order.map((id) => byId.get(id)).filter(Boolean) as ProjectWithKpis[]
-
-  // auto-deschide grupul care conține proiectul selectat
-  useEffect(() => {
-    if (!sel.projectId) return
-    const p = byId.get(sel.projectId)
-    if (p && p.active && p.is_small) setShowSmall(true)
-    if (p && !p.active) setShowDone(true)
-  }, [sel.projectId, byId])
 
   return (
     <Column
@@ -304,57 +294,78 @@ function ProjectsColumn({
           Niciun proiect activ. Apasă „+ Proiect".
         </p>
       )}
-
-      {smallActive.length > 0 && (
-        <div className="pt-1">
-          <button
-            onClick={() => setShowSmall((s) => !s)}
-            className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-xs font-semibold text-[#5B6673] hover:bg-white/80"
-          >
-            <span>Proiecte mici ({smallActive.length})</span>
-            <span aria-hidden className={`transition-transform ${showSmall ? 'rotate-90' : ''}`}>
-              ›
-            </span>
-          </button>
-          <SmallAggregate projects={smallActive} />
-          {showSmall &&
-            smallActive.map((p) => (
-              <Row
-                key={p.id}
-                selected={sel.projectId === p.id}
-                onClick={() => onSelect(sel.projectId === p.id ? undefined : p.id)}
-              >
-                <ProjectRow p={p} selected={sel.projectId === p.id} />
-              </Row>
-            ))}
-        </div>
-      )}
-
-      {done.length > 0 && (
-        <div className="pt-1">
-          <button
-            onClick={() => setShowDone((s) => !s)}
-            className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-xs font-semibold text-[#5B6673] hover:bg-white/80"
-          >
-            <span>Finalizate ({done.length})</span>
-            <span aria-hidden className={`transition-transform ${showDone ? 'rotate-90' : ''}`}>
-              ›
-            </span>
-          </button>
-          {showDone &&
-            done.map((p) => (
-              <Row
-                key={p.id}
-                selected={sel.projectId === p.id}
-                onClick={() => onSelect(sel.projectId === p.id ? undefined : p.id)}
-                dimmed
-              >
-                <ProjectRow p={p} selected={sel.projectId === p.id} />
-              </Row>
-            ))}
-        </div>
-      )}
     </Column>
+  )
+}
+
+/**
+ * Secțiunea de jos: „Proiecte mici" (cu agregatul) și „Finalizate". Le folosim
+ * rar, deci stau în afara blocului principal de lucru, pliate implicit.
+ */
+function SecondaryProjects({
+  projects,
+  sel,
+  onSelect,
+}: {
+  projects: ProjectWithKpis[]
+  sel: Selection
+  onSelect: (projectId: string) => void
+}) {
+  const small = useMemo(() => projects.filter((p) => p.active && p.is_small), [projects])
+  const done = useMemo(() => projects.filter((p) => !p.active), [projects])
+  const [openSmall, setOpenSmall] = useState(false)
+  const [openDone, setOpenDone] = useState(false)
+  if (small.length === 0 && done.length === 0) return null
+
+  const chip = (p: ProjectWithKpis, dim?: boolean) => (
+    <button
+      key={p.id}
+      onClick={() => onSelect(p.id)}
+      className={`flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-left shadow-[0_1px_2px_rgba(13,26,45,0.04)] transition-shadow hover:shadow-[0_2px_8px_rgba(13,26,45,0.09)] ${
+        sel.projectId === p.id ? 'ring-1 ring-[#58A834]' : ''
+      } ${dim ? 'opacity-70' : ''}`}
+    >
+      <span className="text-sm font-medium">{p.name}</span>
+      <span className="text-xs text-[#5B6673]">{pct(p.kpis.donePct, 0)}</span>
+    </button>
+  )
+
+  return (
+    <div className="space-y-3 border-t border-[#E8E8E8] pt-4">
+      {small.length > 0 && (
+        <div className="space-y-2">
+          <button
+            onClick={() => setOpenSmall((o) => !o)}
+            className="flex items-center gap-2 text-sm font-semibold text-[#5B6673]"
+          >
+            <span aria-hidden className={`transition-transform ${openSmall ? 'rotate-90' : ''}`}>
+              ›
+            </span>
+            Proiecte mici ({small.length})
+          </button>
+          {openSmall && (
+            <div className="space-y-3">
+              <SmallAggregate projects={small} />
+              <div className="flex flex-wrap gap-2">{small.map((p) => chip(p))}</div>
+            </div>
+          )}
+        </div>
+      )}
+      {done.length > 0 && (
+        <div className="space-y-2">
+          <button
+            onClick={() => setOpenDone((o) => !o)}
+            className="flex items-center gap-2 text-sm font-semibold text-[#5B6673]"
+          >
+            <span aria-hidden className={`transition-transform ${openDone ? 'rotate-90' : ''}`}>
+              ›
+            </span>
+            Finalizate ({done.length})
+          </button>
+          {openDone && <div className="flex flex-wrap gap-2">{done.map((p) => chip(p, true))}</div>}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -790,7 +801,7 @@ export function ExplorerView({
           fâșie îngustă — spațiul îi trebuie panoului de livrabile. */}
       <div
         className="flex min-h-0 items-stretch gap-3"
-        style={{ height: 'clamp(380px, calc(100vh - 540px), 600px)' }}
+        style={{ height: 'clamp(440px, calc(100vh - 300px), 760px)' }}
       >
         <ProjectsColumn
           projects={projects}
@@ -850,13 +861,11 @@ export function ExplorerView({
         />
       </div>
 
-      {/* Gantt-ul interactiv — scoput selecției: portofoliu / proiect / job */}
-      <GanttChart
+      {/* Proiectele mici + finalizate — le folosim rar, deci stau jos, separat. */}
+      <SecondaryProjects
         projects={projects}
         sel={sel}
-        onSelect={onSelect}
-        patchEntity={patchEntity}
-        today={todayIso()}
+        onSelect={(projectId) => onSelect({ projectId })}
       />
     </div>
   )

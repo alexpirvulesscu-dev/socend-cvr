@@ -1,5 +1,5 @@
-// Gantt-ul interactiv v3 — construit de la zero, fără librării.
-//  - rânduri ierarhice: proiect → joburi → taskuri, după selecția din Explorer
+// Gantt-ul interactiv v3 — construit de la zero, fără librării. Ecran dedicat.
+//  - rânduri ierarhice: proiect → joburi → taskuri, pliabile
 //  - barele de JOB și TASK se trag (mutare) și se redimensionează de capete,
 //    cu „snap" pe zi; bara de PROIECT e calculată din joburi (nu se trage)
 //  - mutarea unui job își mută și taskurile; totul optimist + revert la eroare
@@ -7,17 +7,11 @@
 //    fantomă, funcționează și pe touch; în timpul tragerii nu se scrie nimic —
 //    doar la eliberare
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type {
-  EntityPatch,
-  JobWithKpis,
-  ProjectWithKpis,
-  TaskRow,
-} from '../../data/projects'
+import type { EntityPatch, JobWithKpis, ProjectWithKpis, TaskRow } from '../../data/projects'
 import { shiftJobWithTasks, updateJobDates, updateTaskDates } from '../../data/mutations'
 import { taskPct } from '../../domain/kpi'
 import { dataRo, pct } from '../../lib/format'
 import { toast } from '../Toast'
-import type { Selection } from '../../lib/selection'
 import {
   ZOOM_LEVELS,
   addDays,
@@ -29,8 +23,8 @@ import {
   type ZoomLevel,
 } from './ganttScale'
 
-const LABEL_W = 240
-const ROW_H = 36
+const LABEL_W = 260
+const ROW_H = 40
 
 // ── Modelul de rând ──────────────────────────────────────────────────────
 interface GRow {
@@ -102,10 +96,10 @@ function taskRowOf(p: ProjectWithKpis, j: JobWithKpis, t: TaskRow, depth: 0 | 1 
   }
 }
 
-/** Construiește rândurile vizibile după selecție + starea de pliere. */
+/** Construiește rândurile vizibile după proiectul focalizat + starea de pliere. */
 function buildRows(
   projects: ProjectWithKpis[],
-  sel: Selection,
+  focusProjectId: string | undefined,
   collapsed: Set<string>
 ): GRow[] {
   const rows: GRow[] = []
@@ -125,19 +119,9 @@ function buildRows(
     job: j,
   })
 
-  if (sel.projectId && sel.jobId) {
-    // fereastra unui job: jobul + toate taskurile lui
-    const p = projects.find((x) => x.id === sel.projectId)
-    const j = p?.jobs.find((x) => x.id === sel.jobId)
-    if (!p || !j) return rows
-    rows.push({ ...jobRow(p, j, 0), caret: false })
-    for (const t of j.tasks) rows.push(taskRowOf(p, j, t, 1))
-    return rows
-  }
-
-  if (sel.projectId) {
+  if (focusProjectId) {
     // un proiect: joburile lui, pliabile la nivel de task
-    const p = projects.find((x) => x.id === sel.projectId)
+    const p = projects.find((x) => x.id === focusProjectId)
     if (!p) return rows
     for (const j of p.jobs) {
       const r = jobRow(p, j, 0)
@@ -190,14 +174,14 @@ interface DragState {
 
 export function GanttChart({
   projects,
-  sel,
-  onSelect,
+  focusProjectId,
+  onFocusProject,
   patchEntity,
   today,
 }: {
   projects: ProjectWithKpis[]
-  sel: Selection
-  onSelect: (sel: Selection) => void
+  focusProjectId: string | undefined
+  onFocusProject: (id: string | undefined) => void
   patchEntity: (p: EntityPatch) => void
   today: string
 }) {
@@ -208,12 +192,14 @@ export function GanttChart({
   const scrollRef = useRef<HTMLDivElement>(null)
   const dayWidth = ZOOM_LEVELS[zoom]
 
+  // proiectele oferite în selector (active mari + mici; nu finalizate)
+  const pickable = useMemo(() => projects.filter((p) => p.active), [projects])
+
   // starea implicită de pliere depinde de scop: în portofoliu, joburile stau
-  // pliate (vezi proiectele + joburile, nu zeci de taskuri); într-un proiect,
-  // joburile stau desfăcute. Se re-inițializează când se schimbă selecția.
-  const scopeKey = `${sel.projectId ?? ''}|${sel.jobId ?? ''}`
+  // pliate (vezi proiectele + joburile); într-un proiect, joburile sunt desfăcute
+  const scopeKey = focusProjectId ?? ''
   useEffect(() => {
-    if (!sel.projectId) {
+    if (!focusProjectId) {
       const jobKeys = projects
         .filter((p) => p.active)
         .flatMap((p) => p.jobs.map((j) => `j:${j.id}`))
@@ -224,14 +210,19 @@ export function GanttChart({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scopeKey])
 
-  const allRows = useMemo(() => buildRows(projects, sel, collapsed), [projects, sel, collapsed])
+  const allRows = useMemo(
+    () => buildRows(projects, focusProjectId, collapsed),
+    [projects, focusProjectId, collapsed]
+  )
 
   // filtrul „următoarele 2 săptămâni": doar rândurile care ating fereastra
   const laEnd = addDays(today, 13)
   const rows = useMemo(
     () =>
       lookahead
-        ? allRows.filter((r) => r.start !== null && r.end !== null && r.start <= laEnd && r.end >= today)
+        ? allRows.filter(
+            (r) => r.start !== null && r.end !== null && r.start <= laEnd && r.end >= today
+          )
         : allRows,
     [allRows, lookahead, today, laEnd]
   )
@@ -248,7 +239,6 @@ export function GanttChart({
   const months = useMemo(() => monthSegments(range.start, range.days), [range])
   const trackW = range.days * dayWidth
 
-  // sâmbetele (pentru umbrirea weekendurilor la zoom-urile detaliate)
   const saturdays = useMemo(() => {
     if (dayWidth < 10) return []
     const out: number[] = []
@@ -258,7 +248,6 @@ export function GanttChart({
     return out
   }, [range, dayWidth])
 
-  // săptămânile (etichete la zoom „luna")
   const weekStarts = useMemo(() => {
     const out: number[] = []
     for (let i = 0; i < range.days; i++) {
@@ -267,8 +256,16 @@ export function GanttChart({
     return out
   }, [range])
 
-  // derulează la „azi" DOAR când se schimbă scopul sau zoom-ul — nu și când
-  // fereastra se recalculează după o tragere (ar smulge scroll-ul din mână)
+  const todayX = dayIndex(range.start, today) * dayWidth
+
+  function jumpToToday() {
+    const el = scrollRef.current
+    if (!el) return
+    el.scrollTo({ left: Math.max(0, todayX - (el.clientWidth - LABEL_W) / 2.2), behavior: 'smooth' })
+  }
+
+  // derulează la „azi" DOAR când se schimbă scopul sau zoom-ul — nu la fiecare
+  // recalcul de fereastră (ar smulge scroll-ul din mână în timpul unei trageri)
   const scrolledFor = useRef('')
   useEffect(() => {
     const el = scrollRef.current
@@ -276,9 +273,8 @@ export function GanttChart({
     const key = `${scopeKey}|${zoom}`
     if (scrolledFor.current === key) return
     scrolledFor.current = key
-    const x = dayIndex(range.start, today) * dayWidth
-    el.scrollLeft = Math.max(0, x - (el.clientWidth - LABEL_W) / 3)
-  }, [range.start, dayWidth, today, scopeKey, zoom])
+    el.scrollLeft = Math.max(0, todayX - (el.clientWidth - LABEL_W) / 3)
+  }, [range.start, dayWidth, todayX, scopeKey, zoom])
 
   // Escape anulează tragerea în curs
   useEffect(() => {
@@ -299,12 +295,6 @@ export function GanttChart({
     })
   }
 
-  function selectRow(r: GRow) {
-    if (r.kind === 'project') onSelect({ projectId: r.projectId })
-    else if (r.kind === 'job') onSelect({ projectId: r.projectId, jobId: r.id })
-    else onSelect({ projectId: r.projectId, jobId: r.jobId, taskId: r.id })
-  }
-
   /** Comite mutarea/redimensionarea la eliberarea barei — optimist + revert. */
   function commitDrag(d: DragState) {
     const newStart = addDays(range.start, d.startIdx + (d.mode !== 'resize-r' ? d.deltaDays : 0))
@@ -315,7 +305,11 @@ export function GanttChart({
       const t = r.task
       patchEntity({ kind: 'task', id: t.id, patch: { start_date: newStart, end_date: newEnd } })
       updateTaskDates(t.id, newStart, newEnd).catch((e: Error) => {
-        patchEntity({ kind: 'task', id: t.id, patch: { start_date: t.start_date, end_date: t.end_date } })
+        patchEntity({
+          kind: 'task',
+          id: t.id,
+          patch: { start_date: t.start_date, end_date: t.end_date },
+        })
         toast(`Nu s-a salvat: ${e.message}`)
       })
       return
@@ -325,8 +319,7 @@ export function GanttChart({
       const j = r.job
       if (d.mode === 'move') {
         // jobul se mută cu tot cu taskurile lui. Se deplasează DOAR datele pe
-        // care taskul le are cu adevărat: o latură null („ca jobul") rămâne
-        // null — altfel mutarea ar „îngheța" pe ascuns moștenirea ferestrei.
+        // care taskul le are cu adevărat: o latură null („ca jobul") rămâne null.
         const delta = d.deltaDays
         const shifted = j.tasks
           .filter((t) => t.start_date !== null || t.end_date !== null)
@@ -337,19 +330,35 @@ export function GanttChart({
           }))
         patchEntity({ kind: 'job', id: j.id, patch: { start_date: newStart, end_date: newEnd } })
         for (const s of shifted)
-          patchEntity({ kind: 'task', id: s.id, patch: { start_date: s.startDate, end_date: s.endDate } })
+          patchEntity({
+            kind: 'task',
+            id: s.id,
+            patch: { start_date: s.startDate, end_date: s.endDate },
+          })
         shiftJobWithTasks(j.id, { startDate: newStart, endDate: newEnd }, shifted).catch(
           (e: Error) => {
-            patchEntity({ kind: 'job', id: j.id, patch: { start_date: j.start_date, end_date: j.end_date } })
+            patchEntity({
+              kind: 'job',
+              id: j.id,
+              patch: { start_date: j.start_date, end_date: j.end_date },
+            })
             for (const t of j.tasks)
-              patchEntity({ kind: 'task', id: t.id, patch: { start_date: t.start_date, end_date: t.end_date } })
+              patchEntity({
+                kind: 'task',
+                id: t.id,
+                patch: { start_date: t.start_date, end_date: t.end_date },
+              })
             toast(`Nu s-a salvat: ${e.message}`)
           }
         )
       } else {
         patchEntity({ kind: 'job', id: j.id, patch: { start_date: newStart, end_date: newEnd } })
         updateJobDates(j.id, newStart, newEnd).catch((e: Error) => {
-          patchEntity({ kind: 'job', id: j.id, patch: { start_date: j.start_date, end_date: j.end_date } })
+          patchEntity({
+            kind: 'job',
+            id: j.id,
+            patch: { start_date: j.start_date, end_date: j.end_date },
+          })
           toast(`Nu s-a salvat: ${e.message}`)
         })
       }
@@ -376,12 +385,10 @@ export function GanttChart({
     if (!drag) return
     const raw = pxToDeltaDays(e.clientX - drag.originX, dayWidth)
     let d = raw
-    // limitele: minim o zi; capetele nu se încrucișează
     if (drag.mode === 'resize-l') d = Math.min(raw, drag.endIdx - drag.startIdx)
     if (drag.mode === 'resize-r') d = Math.max(raw, drag.startIdx - drag.endIdx)
     const moved = drag.moved || Math.abs(e.clientX - drag.originX) > 4
-    if (d !== drag.deltaDays || moved !== drag.moved)
-      setDrag({ ...drag, deltaDays: d, moved })
+    if (d !== drag.deltaDays || moved !== drag.moved) setDrag({ ...drag, deltaDays: d, moved })
   }
 
   function onBarPointerUp(e: React.PointerEvent, r: GRow) {
@@ -390,19 +397,16 @@ export function GanttChart({
     e.stopPropagation()
     if (!drag) return
     if (drag.deltaDays === 0) {
-      selectRow(r) // click sau tremur sub o zi — nu o tragere reală
+      if (r.caret) toggleCaret(r.key) // click pe o bară-părinte pliază/desface
     } else if (drag.moved) {
       commitDrag(drag)
     }
     setDrag(null)
   }
 
-  /** OS-ul poate anula gestul (apel, notificare, gest de margine) — curățăm starea. */
   function onBarPointerCancel() {
     setDrag(null)
   }
-
-  const todayX = dayIndex(range.start, today) * dayWidth
 
   const zoomChip = (z: ZoomLevel, label: string) => (
     <button
@@ -416,25 +420,44 @@ export function GanttChart({
     </button>
   )
 
+  const legendChip = (cls: string, label: string) => (
+    <span className="flex items-center gap-1.5">
+      <span className={`h-2.5 w-4 rounded-full ${cls}`} />
+      {label}
+    </span>
+  )
+
   return (
-    <div className="rounded-[20px] bg-white shadow-[0_1px_2px_rgba(13,26,45,0.04),0_8px_24px_rgba(13,26,45,0.06)]">
-      {/* bara de comandă a Gantt-ului */}
-      <div className="flex flex-wrap items-center justify-between gap-2 px-5 pt-4">
-        <h3 className="text-base font-semibold">
-          Cronologie
-          <span className="ml-2 text-sm font-normal text-[#5B6673]">
-            {sel.jobId
-              ? 'jobul selectat'
-              : sel.projectId
-                ? 'proiectul selectat'
-                : 'toate proiectele active'}
-          </span>
-        </h3>
+    <div className="flex h-full flex-col overflow-hidden rounded-[20px] bg-white shadow-[0_1px_2px_rgba(13,26,45,0.04),0_8px_24px_rgba(13,26,45,0.06)]">
+      {/* bara de comandă */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#F3F1EC] px-5 py-3">
+        <div className="flex items-center gap-3">
+          <select
+            value={focusProjectId ?? ''}
+            onChange={(e) => onFocusProject(e.target.value || undefined)}
+            className="cursor-pointer rounded-full border border-[#E8E8E8] bg-white px-3.5 py-1.5 text-sm font-medium outline-none hover:border-[#58A834]"
+          >
+            <option value="">Toate proiectele active</option>
+            {pickable.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={jumpToToday}
+            className="rounded-full bg-[#EEECE7] px-3.5 py-1.5 text-sm font-medium text-[#5B6673] hover:text-[#0D1A2D]"
+          >
+            Azi
+          </button>
+        </div>
         <div className="flex items-center gap-1">
           <button
             onClick={() => setLookahead((l) => !l)}
             className={`mr-2 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-              lookahead ? 'bg-[#14263F] text-white' : 'bg-[#EEECE7] text-[#5B6673] hover:text-[#0D1A2D]'
+              lookahead
+                ? 'bg-[#14263F] text-white'
+                : 'bg-[#EEECE7] text-[#5B6673] hover:text-[#0D1A2D]'
             }`}
           >
             Următoarele 2 săptămâni
@@ -446,21 +469,25 @@ export function GanttChart({
       </div>
 
       {rows.length === 0 ? (
-        <p className="px-5 py-8 text-center text-sm text-[#5B6673]">
+        <p className="px-5 py-16 text-center text-sm text-[#5B6673]">
           {lookahead
             ? 'Nimic planificat în următoarele 2 săptămâni.'
             : 'Niciun rând de arătat — alege un proiect sau adaugă joburi.'}
         </p>
       ) : (
-        <div ref={scrollRef} className="mt-3 overflow-x-auto pb-2">
+        <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto">
           <div style={{ width: LABEL_W + trackW, minWidth: '100%' }}>
-            {/* axa de timp: banda lunilor + săptămâni/zile */}
-            <div className="sticky top-0 z-20">
+            {/* axa de timp — lipită sus */}
+            <div className="sticky top-0 z-30 bg-white">
               <div className="flex">
                 <div
-                  className="sticky left-0 z-10 shrink-0 bg-white"
+                  className="sticky left-0 z-10 flex shrink-0 items-end border-r border-[#E8E8E8] bg-white px-3 pb-1"
                   style={{ width: LABEL_W }}
-                />
+                >
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-[#5B6673]">
+                    Proiect · Job · Task
+                  </span>
+                </div>
                 <div className="relative h-6" style={{ width: trackW }}>
                   {months.map((m) => (
                     <span
@@ -473,43 +500,47 @@ export function GanttChart({
                   ))}
                 </div>
               </div>
-              {zoom !== 'trimestru' && (
-                <div className="flex">
-                  <div className="sticky left-0 z-10 shrink-0 bg-white" style={{ width: LABEL_W }} />
-                  <div className="relative h-5" style={{ width: trackW }}>
-                    {zoom === 'saptamana'
-                      ? Array.from({ length: range.days }, (_, i) => (
-                          <span
-                            key={i}
-                            className={`absolute top-0 text-center text-[10px] tabular-nums ${
-                              weekdayIndex(addDays(range.start, i)) >= 5
-                                ? 'text-[#C9C5BC]'
-                                : 'text-[#5B6673]'
-                            }`}
-                            style={{ left: i * dayWidth, width: dayWidth }}
-                          >
-                            {addDays(range.start, i).slice(8)}
-                          </span>
-                        ))
-                      : weekStarts.map((i) => (
-                          <span
-                            key={i}
-                            className="absolute top-0 border-l border-[#E8E8E8] pl-1 text-[10px] tabular-nums text-[#5B6673]"
-                            style={{ left: i * dayWidth, width: 7 * dayWidth }}
-                          >
-                            {Number(addDays(range.start, i).slice(8))}
-                          </span>
-                        ))}
-                  </div>
+              <div className="flex border-b border-[#E8E8E8]">
+                <div className="sticky left-0 z-10 shrink-0 bg-white" style={{ width: LABEL_W }} />
+                <div className="relative h-5" style={{ width: trackW }}>
+                  {zoom === 'saptamana' &&
+                    Array.from({ length: range.days }, (_, i) => (
+                      <span
+                        key={i}
+                        className={`absolute top-0 text-center text-[10px] tabular-nums ${
+                          weekdayIndex(addDays(range.start, i)) >= 5
+                            ? 'text-[#C9C5BC]'
+                            : 'text-[#5B6673]'
+                        }`}
+                        style={{ left: i * dayWidth, width: dayWidth }}
+                      >
+                        {addDays(range.start, i).slice(8)}
+                      </span>
+                    ))}
+                  {zoom === 'luna' &&
+                    weekStarts.map((i) => (
+                      <span
+                        key={i}
+                        className="absolute top-0 border-l border-[#EEECE7] pl-1 text-[10px] tabular-nums text-[#5B6673]"
+                        style={{ left: i * dayWidth, width: 7 * dayWidth }}
+                      >
+                        {Number(addDays(range.start, i).slice(8))}
+                      </span>
+                    ))}
+                  {/* fanionul „Azi" */}
+                  <span
+                    className="absolute -top-0 z-10 -translate-x-1/2 rounded-full bg-[#14263F] px-1.5 text-[9px] font-bold uppercase tracking-wider text-white"
+                    style={{ left: todayX + dayWidth / 2 }}
+                  >
+                    azi
+                  </span>
                 </div>
-              )}
+              </div>
             </div>
 
-            {/* corpul: rândurile cu bare. FĂRĂ overflow-y aici — un al doilea
-                container de scroll ar rupe sticky-ul etichetelor față de
-                scroller-ul orizontal (pagina derulează vertical, nu cardul). */}
+            {/* corpul: rândurile cu bare */}
             <div className="relative">
-              {/* umbrirea weekendurilor + linia de azi, pe toată înălțimea */}
+              {/* weekenduri + fereastra lookahead + linia de azi, pe toată înălțimea */}
               <div
                 className="pointer-events-none absolute inset-y-0 z-0"
                 style={{ left: LABEL_W, width: trackW }}
@@ -517,20 +548,16 @@ export function GanttChart({
                 {saturdays.map((i) => (
                   <div
                     key={i}
-                    className="absolute inset-y-0 bg-[#F3F1EC]"
+                    className="absolute inset-y-0 bg-[#F6F4EF]"
                     style={{ left: i * dayWidth, width: 2 * dayWidth }}
                   />
                 ))}
                 {lookahead && (
                   <div
                     className="absolute inset-y-0 bg-[#DDEDDC]/40"
-                    style={{
-                      left: dayIndex(range.start, today) * dayWidth,
-                      width: 14 * dayWidth,
-                    }}
+                    style={{ left: todayX, width: 14 * dayWidth }}
                   />
                 )}
-                {/* linia de azi — navy închis (tealul e rezervat header-ului Șantier) */}
                 <div
                   className="absolute inset-y-0 w-0.5 bg-[#14263F]"
                   style={{ left: todayX + dayWidth / 2 }}
@@ -550,26 +577,30 @@ export function GanttChart({
                     if (drag.mode === 'resize-l') eIdx = drag.endIdx
                     if (drag.mode === 'resize-r') sIdx = drag.startIdx
                   }
-                  geom = {
-                    left: sIdx * dayWidth,
-                    width: (eIdx - sIdx + 1) * dayWidth,
-                  }
+                  geom = { left: sIdx * dayWidth, width: (eIdx - sIdx + 1) * dayWidth }
                 }
-                const selectedRow =
-                  (r.kind === 'project' && sel.projectId === r.id && !sel.jobId) ||
-                  (r.kind === 'job' && sel.jobId === r.id && !sel.taskId) ||
-                  (r.kind === 'task' && sel.taskId === r.id)
+                const previewStart =
+                  isDragging && drag
+                    ? addDays(
+                        range.start,
+                        drag.startIdx + (drag.mode !== 'resize-r' ? drag.deltaDays : 0)
+                      )
+                    : r.start
+                const previewEnd =
+                  isDragging && drag
+                    ? addDays(range.start, drag.endIdx + (drag.mode !== 'resize-l' ? drag.deltaDays : 0))
+                    : r.end
 
                 return (
                   <div
                     key={r.key}
-                    className={`relative z-10 flex items-center ${selectedRow ? 'bg-[#DDEDDC]/30' : ''}`}
+                    className="group/row relative z-10 flex items-center border-b border-[#F3F1EC] hover:bg-[#FAF9F6]"
                     style={{ height: ROW_H }}
                   >
                     {/* eticheta din stânga (lipită la scroll orizontal) */}
                     <div
-                      className="sticky left-0 z-20 flex h-full shrink-0 items-center gap-1 border-r border-[#F3F1EC] bg-white pr-2"
-                      style={{ width: LABEL_W, paddingLeft: 8 + r.depth * 16 }}
+                      className="sticky left-0 z-20 flex h-full shrink-0 items-center gap-1 border-r border-[#E8E8E8] bg-white pr-2 group-hover/row:bg-[#FAF9F6]"
+                      style={{ width: LABEL_W, paddingLeft: 8 + r.depth * 18 }}
                     >
                       {r.caret ? (
                         <button
@@ -587,9 +618,19 @@ export function GanttChart({
                       ) : (
                         <span className="w-5 shrink-0" />
                       )}
-                      <button
-                        onClick={() => selectRow(r)}
-                        className={`min-w-0 flex-1 truncate text-left text-sm hover:text-[#115468] ${
+                      {/* pastilă de nivel */}
+                      <span
+                        aria-hidden
+                        className={`h-2 w-2 shrink-0 rounded-full ${
+                          r.kind === 'project'
+                            ? 'bg-[#14263F]'
+                            : r.kind === 'job'
+                              ? 'bg-[#8798AC]'
+                              : 'bg-[#58A834]'
+                        }`}
+                      />
+                      <span
+                        className={`min-w-0 flex-1 truncate text-sm ${
                           r.kind === 'project'
                             ? 'font-semibold'
                             : r.kind === 'job'
@@ -599,7 +640,7 @@ export function GanttChart({
                         title={r.label}
                       >
                         {r.label}
-                      </button>
+                      </span>
                       <span className="shrink-0 text-xs font-medium tabular-nums text-[#5B6673]">
                         {pct(r.donePct, 0)}
                       </span>
@@ -609,7 +650,7 @@ export function GanttChart({
                     <div className="relative h-full" style={{ width: trackW }}>
                       {geom && r.kind === 'project' && (
                         <div
-                          className="absolute top-1/2 h-2 -translate-y-1/2 overflow-hidden rounded-full bg-[#14263F]/15"
+                          className="absolute top-1/2 h-2.5 -translate-y-1/2 overflow-hidden rounded-full bg-[#14263F]/15"
                           style={{ left: geom.left, width: geom.width }}
                           title={`${dataRo(r.start!)} – ${dataRo(r.end!)} (calculat din joburi)`}
                         >
@@ -626,22 +667,18 @@ export function GanttChart({
                           onPointerUp={(e) => onBarPointerUp(e, r)}
                           onPointerCancel={onBarPointerCancel}
                           className={`group absolute top-1/2 -translate-y-1/2 select-none rounded-lg ${
-                            r.kind === 'job' ? 'h-4 bg-[#B9C6D6]' : 'h-5 bg-[#DDEDDC]'
-                          } ${r.ghost ? 'border border-dashed border-[#5B6673] !bg-transparent' : ''} ${
+                            r.kind === 'job' ? 'h-5 bg-[#B9C6D6]' : 'h-6 bg-[#DDEDDC]'
+                          } ${r.ghost ? 'border border-dashed border-[#8798AC] !bg-transparent' : 'shadow-[0_1px_2px_rgba(13,26,45,0.10)]'} ${
                             r.outside ? 'ring-2 ring-[#F0A800]' : ''
                           } ${isDragging ? 'z-10 shadow-lg ring-2 ring-[#58A834]' : ''} cursor-grab active:cursor-grabbing`}
-                          style={{ left: geom.left, width: Math.max(geom.width, 6), touchAction: 'none' }}
-                          title={`${r.label} · ${dataRo(
-                            isDragging && drag
-                              ? addDays(range.start, drag.startIdx + (drag.mode !== 'resize-r' ? drag.deltaDays : 0))
-                              : r.start!
-                          )} – ${dataRo(
-                            isDragging && drag
-                              ? addDays(range.start, drag.endIdx + (drag.mode !== 'resize-l' ? drag.deltaDays : 0))
-                              : r.end!
-                          )}${r.ghost ? ' · fără plan propriu (ca jobul) — trage ca să îl setezi' : ''}${
-                            r.outside ? ' · în afara intervalului jobului' : ''
-                          }`}
+                          style={{
+                            left: geom.left,
+                            width: Math.max(geom.width, 6),
+                            touchAction: 'none',
+                          }}
+                          title={`${r.label} · ${dataRo(previewStart!)} – ${dataRo(previewEnd!)}${
+                            r.ghost ? ' · fără plan propriu (ca jobul) — trage ca să îl setezi' : ''
+                          }${r.outside ? ' · în afara intervalului jobului' : ''}`}
                         >
                           {!r.ghost && (
                             <div
@@ -649,7 +686,13 @@ export function GanttChart({
                               style={{ width: `${Math.min(r.donePct, 1) * 100}%` }}
                             />
                           )}
-                          {/* mânerele de redimensionare (zone late, ușor de prins) */}
+                          {/* eticheta cu perioada în timpul tragerii */}
+                          {isDragging && (
+                            <span className="absolute -top-5 left-0 whitespace-nowrap rounded bg-[#14263F] px-1.5 py-0.5 text-[10px] font-medium text-white">
+                              {dataRo(previewStart!)} – {dataRo(previewEnd!)}
+                            </span>
+                          )}
+                          {/* mânerele de redimensionare */}
                           <div
                             onPointerDown={(e) => onBarPointerDown(e, r, 'resize-l')}
                             onPointerMove={onBarPointerMove}
@@ -658,7 +701,7 @@ export function GanttChart({
                             className="absolute -left-1 top-0 h-full w-2.5 cursor-ew-resize rounded-l-lg opacity-0 transition-opacity group-hover:opacity-100"
                             style={{ touchAction: 'none' }}
                           >
-                            <div className="mx-auto mt-0.5 h-[calc(100%-4px)] w-1 rounded bg-[#0D1A2D]/30" />
+                            <div className="mx-auto mt-1 h-[calc(100%-8px)] w-1 rounded bg-white/70" />
                           </div>
                           <div
                             onPointerDown={(e) => onBarPointerDown(e, r, 'resize-r')}
@@ -668,7 +711,7 @@ export function GanttChart({
                             className="absolute -right-1 top-0 h-full w-2.5 cursor-ew-resize rounded-r-lg opacity-0 transition-opacity group-hover:opacity-100"
                             style={{ touchAction: 'none' }}
                           >
-                            <div className="mx-auto mt-0.5 h-[calc(100%-4px)] w-1 rounded bg-[#0D1A2D]/30" />
+                            <div className="mx-auto mt-1 h-[calc(100%-8px)] w-1 rounded bg-white/70" />
                           </div>
                         </div>
                       )}
@@ -681,10 +724,23 @@ export function GanttChart({
         </div>
       )}
 
-      <p className="border-t border-[#F3F1EC] px-5 py-2.5 text-xs text-[#5B6673]">
-        Trage bara ca să muți · trage capetele ca să scurtezi/lungești · mutarea unui job își mută
-        și taskurile · bara de proiect e calculată din joburi · linia verticală = azi
-      </p>
+      {/* legenda + indiciile */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-[#F3F1EC] px-5 py-2.5 text-xs text-[#5B6673]">
+        {legendChip('bg-[#14263F]', 'proiect / job')}
+        {legendChip('bg-[#58A834]', 'task')}
+        <span className="flex items-center gap-1.5">
+          <span className="h-2.5 w-4 rounded-full border border-dashed border-[#8798AC]" />
+          fără plan propriu
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-2.5 w-4 rounded-full ring-2 ring-[#F0A800]" />
+          în afara jobului
+        </span>
+        <span className="ml-auto">
+          Trage bara ca să muți · trage capetele ca să scurtezi/lungești · mutarea unui job îi mută
+          și taskurile
+        </span>
+      </div>
     </div>
   )
 }

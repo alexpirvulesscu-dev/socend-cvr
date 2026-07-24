@@ -3,30 +3,32 @@ import { useProjectTree } from './data/projects'
 import { useAuth, signOut, type Role } from './lib/auth'
 import { resolveSelection, type Selection } from './lib/selection'
 import { ExplorerView } from './views/Explorer'
+import { GanttView } from './views/Gantt'
 import { SantierView } from './views/Santier'
 import { ConfigurareView } from './views/Configurare'
 import { LoginView } from './views/Login'
 import { CronologicView } from './views/Cronologic'
 import { Toasts } from './components/Toast'
 
-// v3: biroul are UN singur ecran (Explorer, coloane Miller) + Cronologic +
-// wizard-ul de proiect nou. Navigarea rămâne prin stare, fără router.
-type Screen = 'explorer' | 'santier' | 'config' | 'cronologic'
+// v3: biroul are Explorer (coloane Miller) + Gantt (ecran propriu) + Cronologic
+// + wizard-ul de proiect nou. Navigarea rămâne prin stare, fără router.
+type Screen = 'explorer' | 'gantt' | 'santier' | 'config' | 'cronologic'
+type Tab = 'proiecte' | 'gantt' | 'santier'
 
 function TopBar({
-  section,
-  onSection,
+  active,
+  onTab,
   role,
   email,
 }: {
-  section: 'birou' | 'santier'
-  onSection: (s: 'birou' | 'santier') => void
+  active: Tab
+  onTab: (t: Tab) => void
   role: Role
   email: string
 }) {
-  const tab = (active: boolean) =>
+  const tab = (on: boolean) =>
     `rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
-      active ? 'bg-[#DDEDDC] text-[#0D1A2D]' : 'text-[#5B6673] hover:text-[#0D1A2D]'
+      on ? 'bg-[#DDEDDC] text-[#0D1A2D]' : 'text-[#5B6673] hover:text-[#0D1A2D]'
     }`
   return (
     <header className="sticky top-0 z-10 border-b border-[#E8E8E8]/60 bg-[rgba(250,249,246,0.8)] backdrop-blur-xl">
@@ -41,10 +43,13 @@ function TopBar({
           {/* rolul site vede DOAR Șantier — fără taburi de birou */}
           {role !== 'site' && (
             <nav className="flex gap-1">
-              <button className={tab(section === 'birou')} onClick={() => onSection('birou')}>
+              <button className={tab(active === 'proiecte')} onClick={() => onTab('proiecte')}>
                 Proiecte
               </button>
-              <button className={tab(section === 'santier')} onClick={() => onSection('santier')}>
+              <button className={tab(active === 'gantt')} onClick={() => onTab('gantt')}>
+                Gantt
+              </button>
+              <button className={tab(active === 'santier')} onClick={() => onTab('santier')}>
                 Șantier
               </button>
             </nav>
@@ -68,16 +73,16 @@ function OfficeApp({ role, email }: { role: Role; email: string }) {
   const [sel, setSel] = useState<Selection>({})
   const { projects, loading, error, refetch, patchEntity } = useProjectTree()
 
-  const section = screen === 'santier' ? 'santier' : 'birou'
-  const onSection = (s: 'birou' | 'santier') =>
-    setScreen(s === 'santier' ? 'santier' : 'explorer')
+  const active: Tab = screen === 'santier' ? 'santier' : screen === 'gantt' ? 'gantt' : 'proiecte'
+  const onTab = (t: Tab) =>
+    setScreen(t === 'santier' ? 'santier' : t === 'gantt' ? 'gantt' : 'explorer')
 
   // Ecranul global de încărcare apare DOAR la prima citire; refetch-urile de
   // fundal (ex. după închiderea zilei) nu demontează ecranul curent.
   if (loading && projects.length === 0) {
     return (
       <>
-        <TopBar section={section} onSection={onSection} role={role} email={email} />
+        <TopBar active={active} onTab={onTab} role={role} email={email} />
         <p className="p-8 text-center text-sm text-[#5B6673]">Se încarcă…</p>
       </>
     )
@@ -85,7 +90,7 @@ function OfficeApp({ role, email }: { role: Role; email: string }) {
   if (error) {
     return (
       <>
-        <TopBar section={section} onSection={onSection} role={role} email={email} />
+        <TopBar active={active} onTab={onTab} role={role} email={email} />
         <p className="p-8 text-center text-sm text-[#D64545]">Eroare: {error}</p>
       </>
     )
@@ -103,8 +108,9 @@ function OfficeApp({ role, email }: { role: Role; email: string }) {
 
   return (
     <>
-      <TopBar section={section} onSection={onSection} role={role} email={email} />
+      <TopBar active={active} onTab={onTab} role={role} email={email} />
       {effScreen === 'santier' && <SantierView onDataChanged={refetch} />}
+      {effScreen === 'gantt' && <GanttView projects={projects} patchEntity={patchEntity} />}
       {effScreen === 'config' && (
         <ConfigurareView
           onDone={() => {
@@ -139,7 +145,7 @@ function OfficeApp({ role, email }: { role: Role; email: string }) {
 function SiteApp({ role, email }: { role: Role; email: string }) {
   return (
     <>
-      <TopBar section="santier" onSection={() => {}} role={role} email={email} />
+      <TopBar active="santier" onTab={() => {}} role={role} email={email} />
       <SantierView />
     </>
   )

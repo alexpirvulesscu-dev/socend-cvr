@@ -146,8 +146,12 @@ function CosturiPnl({ p }: { p: ProjectWithKpis }) {
   )
 }
 
-export function CumSeCalculeaza() {
-  // pliat implicit — informația apare doar la cerere, nu poluează pagina
+/**
+ * „Note" — cutia pliată cu informațiile rar folosite: ce se întâmplă la
+ * ștergere (doar pentru un proiect), formulele KPI și regulile de cost din P&L.
+ * Pliată implicit, ca să nu polueze pagina.
+ */
+export function Note({ withDeleteInfo }: { withDeleteInfo?: boolean } = {}) {
   const [open, setOpen] = useState(false)
   const rows = [
     ['Progres', 'valoarea taskului × procentul realizat din livrabile, adunat pe tot proiectul'],
@@ -171,21 +175,34 @@ export function CumSeCalculeaza() {
         onClick={() => setOpen((o) => !o)}
         className="flex w-full items-center justify-between px-5 py-4 text-left"
       >
-        <h3 className="text-base font-semibold">Cum se calculează</h3>
+        <h3 className="text-base font-semibold">Note</h3>
         <span aria-hidden className={`text-[#C9C5BC] transition-transform ${open ? 'rotate-90' : ''}`}>
           ›
         </span>
       </button>
       {open && (
         <div className="space-y-4 px-5 pb-5">
-          <dl className="space-y-2">
-            {rows.map(([term, def]) => (
-              <div key={term} className="text-sm">
-                <dt className="inline font-medium">{term}:</dt>{' '}
-                <dd className="inline text-[#5B6673]">{def}</dd>
-              </div>
-            ))}
-          </dl>
+          {withDeleteInfo && (
+            <div>
+              <p className="mb-1 text-sm font-semibold">Ce se întâmplă la ștergere</p>
+              <p className="text-sm text-[#5B6673]">
+                Ștergerea elimină definitiv proiectul din CVR (joburi, taskuri, raportări,
+                costuri). În P&amp;L, proiectul legat doar se dezactivează — istoricul de plăți
+                rămâne.
+              </p>
+            </div>
+          )}
+          <div className={withDeleteInfo ? 'border-t border-[#E8E8E8] pt-3' : ''}>
+            <p className="mb-2 text-sm font-semibold">Cum se calculează KPI-urile</p>
+            <dl className="space-y-2">
+              {rows.map(([term, def]) => (
+                <div key={term} className="text-sm">
+                  <dt className="inline font-medium">{term}:</dt>{' '}
+                  <dd className="inline text-[#5B6673]">{def}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
           <div className="border-t border-[#E8E8E8] pt-3">
             <p className="mb-2 text-sm font-semibold">
               Costurile reale — de unde vin și cum se repartizează din P&amp;L
@@ -230,6 +247,9 @@ function ProjectDetail({
     })
   }
   const [busy, setBusy] = useState(false)
+  // controalele rar folosite (proiect mic / finalizare / ștergere) apar doar
+  // când apeși „Editează" — altfel nu le cărăm după noi tot timpul
+  const [editing, setEditing] = useState(false)
 
   return (
     <div className="space-y-3">
@@ -248,7 +268,19 @@ function ProjectDetail({
             }}
             inputClassName="text-xl font-semibold w-72"
           />
-          {!p.active && <NeutralPill>Finalizat</NeutralPill>}
+          <div className="flex items-center gap-2">
+            {!p.active && <NeutralPill>Finalizat</NeutralPill>}
+            <button
+              onClick={() => setEditing((e) => !e)}
+              className={`rounded-full border px-3 py-1 text-sm font-medium transition-colors ${
+                editing
+                  ? 'border-[#58A834] bg-[#DDEDDC] text-[#46862A]'
+                  : 'border-[#E8E8E8] bg-white text-[#5B6673] hover:border-[#58A834]'
+              }`}
+            >
+              {editing ? 'Gata' : 'Editează'}
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
@@ -321,61 +353,61 @@ function ProjectDetail({
           Contract {lei(Number(p.contract_value))} · valoarea = suma taskurilor
         </p>
 
-        <div className="flex flex-wrap items-center gap-2 border-t border-[#E8E8E8] pt-3">
-          <label className="flex cursor-pointer items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={p.is_small}
-              onChange={(e) => {
-                const v = e.target.checked
-                save(
-                  { kind: 'project', id: p.id, patch: { is_small: v } },
-                  { kind: 'project', id: p.id, patch: { is_small: p.is_small } },
-                  () => persistProject({ isSmall: v })
-                )
-              }}
-              className="h-4 w-4 accent-[#58A834]"
-            />
-            Proiect mic
-          </label>
-          <div className="ml-auto flex items-center gap-2">
-            <button
-              disabled={busy}
-              onClick={() => {
-                setBusy(true)
-                save(
-                  { kind: 'project', id: p.id, patch: { active: !p.active } },
-                  { kind: 'project', id: p.id, patch: { active: p.active } },
-                  () => setProjectActive(p.id, p.pnl_proiect_id, !p.active)
-                )
-                setBusy(false)
-              }}
-              className="rounded-full bg-[#EEECE7] px-4 py-2 text-sm font-medium hover:bg-[#E2DFD8] disabled:opacity-40"
-            >
-              {p.active ? 'Marchează finalizat' : 'Reactivează proiectul'}
-            </button>
-            <DangerButton
-              label="Șterge proiectul"
-              onConfirmed={() => {
-                deleteProject(p.id, p.pnl_proiect_id)
-                  .then(() => {
-                    onSelect({})
-                    onRefetch()
-                  })
-                  .catch((e: Error) => toast(`Nu s-a șters: ${e.message}`))
-              }}
-            />
+        {/* controalele rare — apar doar în modul „Editează" */}
+        {editing && (
+          <div className="flex flex-wrap items-center gap-2 border-t border-[#E8E8E8] pt-3">
+            <label className="flex cursor-pointer items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={p.is_small}
+                onChange={(e) => {
+                  const v = e.target.checked
+                  save(
+                    { kind: 'project', id: p.id, patch: { is_small: v } },
+                    { kind: 'project', id: p.id, patch: { is_small: p.is_small } },
+                    () => persistProject({ isSmall: v })
+                  )
+                }}
+                className="h-4 w-4 accent-[#58A834]"
+              />
+              Proiect mic
+            </label>
+            <div className="ml-auto flex items-center gap-2">
+              <button
+                disabled={busy}
+                onClick={() => {
+                  setBusy(true)
+                  save(
+                    { kind: 'project', id: p.id, patch: { active: !p.active } },
+                    { kind: 'project', id: p.id, patch: { active: p.active } },
+                    () => setProjectActive(p.id, p.pnl_proiect_id, !p.active)
+                  )
+                  setBusy(false)
+                }}
+                className="rounded-full bg-[#EEECE7] px-4 py-2 text-sm font-medium hover:bg-[#E2DFD8] disabled:opacity-40"
+              >
+                {p.active ? 'Marchează finalizat' : 'Reactivează proiectul'}
+              </button>
+              <DangerButton
+                label="Șterge proiectul"
+                onConfirmed={() => {
+                  deleteProject(p.id, p.pnl_proiect_id)
+                    .then(() => {
+                      onSelect({})
+                      onRefetch()
+                    })
+                    .catch((e: Error) => toast(`Nu s-a șters: ${e.message}`))
+                }}
+              />
+            </div>
           </div>
-        </div>
-        <p className="text-xs text-[#5B6673]">
-          Ștergerea elimină definitiv proiectul din CVR (joburi, taskuri, raportări, costuri).
-          În P&amp;L, proiectul legat doar se dezactivează — istoricul de plăți rămâne.
-        </p>
+        )}
       </Card>
 
       <FluxFacturareInline p={p} save={save} />
       <CosturiPnl p={p} />
-      <CumSeCalculeaza />
+      {/* „Note": ce se întâmplă la ștergere + formulele + regulile de cost */}
+      <Note withDeleteInfo />
     </div>
   )
 }
@@ -1196,7 +1228,7 @@ export function DetailPanel({
                 nivelul selectat. {active.length === 0 ? 'Începe cu „+ Proiect".' : ''}
               </p>
             </Card>
-            <CumSeCalculeaza />
+            <Note />
           </div>
         )}
         {project && !job && (
