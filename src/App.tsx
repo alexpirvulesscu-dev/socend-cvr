@@ -4,6 +4,7 @@ import { useAuth, signOut, type Role } from './lib/auth'
 import { resolveSelection, type Selection } from './lib/selection'
 import { ExplorerView } from './views/Explorer'
 import { GanttView } from './views/Gantt'
+import { LookaheadView } from './views/Lookahead'
 import { SantierView } from './views/Santier'
 import { ConfigurareView } from './views/Configurare'
 import { LoginView } from './views/Login'
@@ -12,8 +13,8 @@ import { Toasts } from './components/Toast'
 
 // v3: biroul are Explorer (coloane Miller) + Gantt (ecran propriu) + Cronologic
 // + wizard-ul de proiect nou. Navigarea rămâne prin stare, fără router.
-type Screen = 'explorer' | 'gantt' | 'santier' | 'config' | 'cronologic'
-type Tab = 'proiecte' | 'gantt' | 'santier'
+type Screen = 'explorer' | 'gantt' | 'urmeaza' | 'santier' | 'config' | 'cronologic'
+type Tab = 'proiecte' | 'gantt' | 'urmeaza' | 'santier'
 
 function TopBar({
   active,
@@ -49,6 +50,9 @@ function TopBar({
               <button className={tab(active === 'gantt')} onClick={() => onTab('gantt')}>
                 Gantt
               </button>
+              <button className={tab(active === 'urmeaza')} onClick={() => onTab('urmeaza')}>
+                Ce urmează
+              </button>
               <button className={tab(active === 'santier')} onClick={() => onTab('santier')}>
                 Șantier
               </button>
@@ -73,9 +77,18 @@ function OfficeApp({ role, email }: { role: Role; email: string }) {
   const [sel, setSel] = useState<Selection>({})
   const { projects, loading, error, refetch, patchEntity } = useProjectTree()
 
-  const active: Tab = screen === 'santier' ? 'santier' : screen === 'gantt' ? 'gantt' : 'proiecte'
+  const active: Tab =
+    screen === 'santier'
+      ? 'santier'
+      : screen === 'gantt'
+        ? 'gantt'
+        : screen === 'urmeaza'
+          ? 'urmeaza'
+          : 'proiecte'
   const onTab = (t: Tab) =>
-    setScreen(t === 'santier' ? 'santier' : t === 'gantt' ? 'gantt' : 'explorer')
+    setScreen(
+      t === 'santier' ? 'santier' : t === 'gantt' ? 'gantt' : t === 'urmeaza' ? 'urmeaza' : 'explorer'
+    )
 
   // Ecranul global de încărcare apare DOAR la prima citire; refetch-urile de
   // fundal (ex. după închiderea zilei) nu demontează ecranul curent.
@@ -111,6 +124,15 @@ function OfficeApp({ role, email }: { role: Role; email: string }) {
       <TopBar active={active} onTab={onTab} role={role} email={email} />
       {effScreen === 'santier' && <SantierView onDataChanged={refetch} />}
       {effScreen === 'gantt' && <GanttView projects={projects} patchEntity={patchEntity} />}
+      {effScreen === 'urmeaza' && (
+        <LookaheadView
+          projects={projects}
+          onOpen={(s) => {
+            setSel(s)
+            setScreen('explorer')
+          }}
+        />
+      )}
       {effScreen === 'config' && (
         <ConfigurareView
           onDone={() => {

@@ -39,6 +39,9 @@ function makeRawProject(over: Partial<ProjectRow> = {}): ProjectRow {
         start_date: '2026-07-01',
         end_date: '2026-07-20',
         sort_order: 1,
+        baseline_start_date: '2026-07-01',
+        baseline_end_date: '2026-07-20',
+        cvr_job_billing: { depus: 10_000, certificat: 5_000, facturat: 5_000, incasat: 5_000 },
         tasks: [
           {
             id: 't1',
@@ -70,7 +73,6 @@ function makeRawProject(over: Partial<ProjectRow> = {}): ProjectRow {
         ],
       },
     ],
-    cvr_billing: { depus: 10_000, certificat: 5_000, facturat: 5_000, incasat: 5_000 },
     ...over,
   }
 }
@@ -91,16 +93,33 @@ describe('decorateProject', () => {
     expect(p.jobs[1].tasks.map((t) => t.id)).toEqual(['t1', 't2'])
   })
 
-  it('tolerează cvr_billing ca obiect SAU array (cache-ul de schemă PostgREST)', () => {
+  it('tolerează situația jobului ca obiect SAU array (cache-ul de schemă PostgREST)', () => {
     const asObj = decorateProject(makeRawProject(), TODAY)
-    const asArr = decorateProject(
-      makeRawProject({
-        cvr_billing: [{ depus: 10_000, certificat: 5_000, facturat: 5_000, incasat: 5_000 }],
-      }),
-      TODAY
-    )
+    const arr = makeRawProject()
+    arr.jobs[0].cvr_job_billing = [
+      { depus: 10_000, certificat: 5_000, facturat: 5_000, incasat: 5_000 },
+    ]
+    const asArr = decorateProject(arr, TODAY)
     expect(asObj.billing).toEqual(asArr.billing)
     expect(asObj.billing.depus).toBe(10_000)
+  })
+
+  it('facturarea proiectului = suma situațiilor joburilor (rollup)', () => {
+    const raw = makeRawProject()
+    raw.jobs = [
+      raw.jobs[0],
+      {
+        ...raw.jobs[0],
+        id: 'j2',
+        sort_order: 2,
+        cvr_job_billing: { depus: 1_000, certificat: 0, facturat: 500, incasat: 250 },
+        tasks: [],
+      },
+    ]
+    const p = decorateProject(raw, TODAY)
+    expect(p.billing.depus).toBe(11_000)
+    expect(p.billing.facturat).toBe(5_500)
+    expect(p.kpis.billing.incasat).toBe(5_250)
   })
 
   it('calculează KPI-urile: 50% realizat → EV 50.000, WIP = EV − depus', () => {
@@ -238,11 +257,12 @@ describe('treeReducer — patch-uri optimiste', () => {
     expect(t.end_date).toBe('2026-07-25')
   })
 
-  it('patch pe facturare recalculează cash-ul', () => {
+  it('patch pe situația unui JOB recalculează cash-ul proiectului (rollup)', () => {
     const p = decorateProject(makeRawProject(), TODAY)
     const next = treeReducer(makeState([p]), {
+      // id-ul e al JOBULUI: facturarea stă pe job din 0017
       type: 'patched',
-      patch: { kind: 'billing', id: 'p1', patch: { facturat: 50_000, incasat: 25_000 } },
+      patch: { kind: 'billing', id: 'j1', patch: { facturat: 50_000, incasat: 25_000 } },
       today: TODAY,
     })
     expect(next.projects[0].billing.facturat).toBe(50_000)

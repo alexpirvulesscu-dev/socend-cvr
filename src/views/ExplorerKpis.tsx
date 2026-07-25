@@ -9,7 +9,7 @@ import {
   scheduleColor,
   type KpiColor,
 } from '../domain/kpi'
-import { compact, num, pct } from '../lib/format'
+import { compact, num, pct, zile } from '../lib/format'
 import { Card, scheduleText } from '../components/ui'
 
 const VALUE_COLOR: Record<KpiColor, string> = {
@@ -23,35 +23,55 @@ function KpiCard({
   question,
   value,
   caption,
+  forecast,
   color,
 }: {
   eyebrow: string
   question: string
   value: string
   caption: string
+  /** linia de prognoză „la final estimăm…" (când progresul e destul de mare) */
+  forecast?: string
   color?: KpiColor
 }) {
   return (
-    <Card className="space-y-0.5 !p-4">
+    <Card className="flex flex-col !p-4">
       <p className="text-[11px] font-semibold uppercase tracking-wider text-[#5B6673]">{eyebrow}</p>
-      <p className="text-xs text-[#5B6673]">{question}</p>
-      <p className={`text-xl font-semibold tracking-tight ${color ? VALUE_COLOR[color] : ''}`}>
+      <p className="mt-0.5 text-xs text-[#5B6673]">{question}</p>
+      <p className={`mt-0.5 text-xl font-semibold tracking-tight ${color ? VALUE_COLOR[color] : ''}`}>
         {value}
       </p>
-      <p className="text-[11px] leading-snug text-[#5B6673]">{caption}</p>
+      <p className="mt-0.5 text-[11px] leading-snug text-[#5B6673]">{caption}</p>
+      {forecast && (
+        <p className="mt-auto border-t border-[#F3F1EC] pt-1.5 text-[11px] leading-snug text-[#5B6673]">
+          <span className="font-medium text-[#0D1A2D]">La final: </span>
+          {forecast}
+        </p>
+      )}
     </Card>
   )
+}
+
+/** „PT2" din „Punct Termic 2 (PT2)" — eticheta scurtă pentru captions. */
+function shortJobName(name: string): string {
+  return name.match(/\(([^)]+)\)/)?.[1] ?? name
 }
 
 /** Cele 5 carduri pentru UN proiect (întrebările exacte din design). */
 function ProjectKpiBand({ p }: { p: ProjectWithKpis }) {
   const k = p.kpis
   const shouldCost = k.costVariance + k.actualCost
-  const behindJobs = p.jobs.filter((j) => j.kpis.behindDays >= 2)
+
+  // KPI 02: conduce cel mai întârziat job, nu media care îl ascunde
+  const worst = [...p.jobs].sort((a, b) => b.kpis.behindDays - a.kpis.behindDays)[0]
+  const behindCount = p.jobs.filter((j) => j.kpis.behindDays >= 2).length
   const graficCaption =
-    behindJobs.length === 0
+    !worst || worst.kpis.behindDays < 2
       ? 'toate joburile conform planului'
-      : `${behindJobs.map((j) => j.name.match(/\(([^)]+)\)/)?.[1] ?? j.name).join(', ')} în urmă · restul conform planului`
+      : `cel mai în urmă: ${shortJobName(worst.name)} (${zile(worst.kpis.behindDays)})` +
+        (behindCount > 1 ? ` · încă ${behindCount - 1} în urmă` : '')
+  // întârzierea în bani: muncă ce trebuia executată (deci facturabilă) până azi
+  const lateLei = Math.round(k.scheduleVarianceLei)
 
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
@@ -66,27 +86,37 @@ function ProjectKpiBand({ p }: { p: ProjectWithKpis }) {
         question="În avans sau în urmă?"
         value={scheduleText(k.behindDays)}
         caption={graficCaption}
+        forecast={
+          lateLei > 0
+            ? `muncă de ${compact(lateLei)} lei trebuia executată până azi`
+            : undefined
+        }
         color={scheduleColor(k.behindDays)}
       />
       <KpiCard
         eyebrow="03 · Cost vs buget"
         question="A costat cât am planificat?"
         value={`${k.costVariance >= 0 ? '+' : ''}${compact(k.costVariance)}`}
-        caption={`atât ar fi trebuit să coste: ${compact(shouldCost)} · a costat: ${compact(k.actualCost)}`}
+        caption={`trebuia ${compact(shouldCost)} · a costat ${compact(k.actualCost)}`}
+        forecast={k.eacCost !== null ? `cost ~${compact(k.eacCost)} lei` : undefined}
         color={costColor(k.costVariance)}
       />
       <KpiCard
         eyebrow="04 · Marjă la zi"
         question="Câștigăm bani?"
         value={pct(k.margin)}
-        caption={`clienții ne datorează ${compact(k.ev)} — costul nostru ${compact(k.actualCost)}`}
+        caption="din fiecare leu executat, atât rămâne după costuri"
+        forecast={
+          k.forecastMargin !== null ? `marjă ~${pct(k.forecastMargin)} la ritmul actual` : undefined
+        }
         color={marginColor(k.margin)}
       />
       <KpiCard
         eyebrow="05 · Încasări"
         question="Unde sunt banii?"
         value={`${num(k.cashPct * 100, 0)}% încasat`}
-        caption={`din ce am facturat · construit dar nefacturat: ${compact(k.wip)}`}
+        caption={`${compact(k.billing.incasat)} din ${compact(k.billing.facturat)} facturat`}
+        forecast={k.wip > 0 ? `${compact(k.wip)} lei construiți și neprobați` : undefined}
         color={cashColor(k.cashPct)}
       />
     </div>
@@ -109,19 +139,24 @@ function CompanyKpiBand({ projects }: { projects: ProjectWithKpis[] }) {
   const cash = totalFacturat > 0 ? totalIncasat / totalFacturat : 1
 
   const behind = projects.filter((p) => p.kpis.behindDays >= 2)
+  const worst = [...projects].sort((a, b) => b.kpis.behindDays - a.kpis.behindDays)[0]
   const graficValue =
     behind.length === 0
       ? 'toate conform planului'
       : behind.length === 1
         ? '1 proiect în urmă'
         : `${behind.length} proiecte în urmă`
-  const graficCaption = projects
-    .map((p) => {
-      const first = p.name.split(' ')[0]
-      const t = scheduleText(p.kpis.behindDays)
-      return `${first} ${t.charAt(0).toLowerCase()}${t.slice(1)}`
-    })
-    .join(' · ')
+  const graficCaption =
+    !worst || worst.kpis.behindDays < 2
+      ? 'niciun proiect nu depășește 2 zile'
+      : `cel mai în urmă: ${worst.name.split(' ')[0]} (${zile(worst.kpis.behindDays)})`
+  const lateLei = Math.round(
+    projects.reduce((s, p) => s + Math.max(0, p.kpis.scheduleVarianceLei), 0)
+  )
+  const totalEac = projects.reduce((s, p) => s + (p.kpis.eacCost ?? 0), 0)
+  const eacKnown = projects.some((p) => p.kpis.eacCost !== null)
+  const forecastMarginTotal =
+    eacKnown && totalContract > 0 ? (totalContract - totalEac) / totalContract : null
 
   if (projects.length === 0) return null
 
@@ -138,27 +173,37 @@ function CompanyKpiBand({ projects }: { projects: ProjectWithKpis[] }) {
         question="În avans sau în urmă?"
         value={graficValue}
         caption={graficCaption}
+        forecast={
+          lateLei > 0 ? `muncă de ${compact(lateLei)} lei trebuia executată până azi` : undefined
+        }
         color={behind.length === 0 ? 'good' : 'warning'}
       />
       <KpiCard
         eyebrow="03 · Cost vs buget"
         question="A costat cât am planificat?"
         value={`${totalCostVar >= 0 ? '+' : ''}${compact(totalCostVar)}`}
-        caption={`atât ar fi trebuit să coste: ${compact(shouldCost)} · a costat: ${compact(totalCost)}`}
+        caption={`trebuia ${compact(shouldCost)} · a costat ${compact(totalCost)}`}
+        forecast={eacKnown ? `cost ~${compact(totalEac)} lei` : undefined}
         color={costColor(totalCostVar)}
       />
       <KpiCard
         eyebrow="04 · Marjă la zi"
         question="Câștigăm bani?"
         value={pct(marginTotal)}
-        caption={`clienții ne datorează ${compact(totalEV)} — costul nostru ${compact(totalCost)}`}
+        caption="din fiecare leu executat, atât rămâne după costuri"
+        forecast={
+          forecastMarginTotal !== null
+            ? `marjă ~${pct(forecastMarginTotal)} la ritmul actual`
+            : undefined
+        }
         color={marginColor(marginTotal)}
       />
       <KpiCard
         eyebrow="05 · Încasări"
         question="Unde sunt banii?"
         value={`${num(cash * 100, 0)}% încasat`}
-        caption={`din ce am facturat · construit dar nefacturat: ${compact(totalWip)}`}
+        caption={`${compact(totalIncasat)} din ${compact(totalFacturat)} facturat`}
+        forecast={totalWip > 0 ? `${compact(totalWip)} lei construiți și neprobați` : undefined}
         color={cashColor(cash)}
       />
     </div>

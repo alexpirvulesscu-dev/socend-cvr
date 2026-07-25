@@ -43,7 +43,8 @@ function projectProgress(p: ProgressProject, today: string) {
       })),
     })),
   }))
-  const k = projectKpis(jobs, { depus: 0, certificat: 0, facturat: 0, incasat: 0 }, today)
+  // șantierul nu vede bani: din KPI-uri folosim doar progresul fizic și planul
+  const k = projectKpis(jobs, today)
   return { donePct: k.donePct, planPct: k.planPct }
 }
 

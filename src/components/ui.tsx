@@ -43,17 +43,23 @@ export function KpiPill({ color, children }: { color: KpiColor; children: ReactN
   )
 }
 
+// Statusul e informație de rutină, nu un verdict — deci neutru. Culoarea din
+// aplicație e rezervată verdictelor (banda KPI) și acțiunilor (butoane verzi).
 const STATUS_STYLES: Record<TaskStatus, string> = {
   neinceput: 'bg-[#EEECE7] text-[#5B6673]',
-  in_lucru: 'bg-[#DDEDDC] text-[#46862A]',
-  finalizat: 'bg-[#58A834] text-white',
+  in_lucru: 'bg-[#EEECE7] text-[#0D1A2D]',
+  finalizat: 'bg-[#EEECE7] text-[#5B6673]',
 }
 
 export function StatusPill({ status }: { status: TaskStatus }) {
   return (
     <span
-      className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${STATUS_STYLES[status]}`}
+      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${STATUS_STYLES[status]}`}
     >
+      {status === 'in_lucru' && (
+        <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-[#58A834]" />
+      )}
+      {status === 'finalizat' && <span aria-hidden>✓</span>}
       {STATUS_LABELS[status]}
     </span>
   )
@@ -73,14 +79,15 @@ export function ProgressBar({
   const plan = planPct === undefined ? undefined : Math.min(Math.max(planPct, 0), 1) * 100
   return (
     <div className={`relative h-2 overflow-visible rounded-full bg-[#EEECE7] ${className}`}>
+      {/* progresul e DATE, nu o acțiune — deci navy, nu verdele de brand */}
       <div
-        className="h-2 rounded-full bg-[#58A834] transition-[width] duration-300"
+        className="h-2 rounded-full bg-[#14263F] transition-[width] duration-300"
         style={{ width: `${done}%` }}
       />
       {plan !== undefined && (
         <div
           title="Planificat azi"
-          className="absolute -top-1 h-4 w-0.5 rounded bg-[#0D1A2D]"
+          className="absolute -top-1 h-4 w-0.5 rounded bg-[#8798AC]"
           style={{ left: `calc(${plan}% - 1px)` }}
         />
       )}
@@ -171,8 +178,12 @@ export function DangerButton({
           setArmed(true)
         }
       }}
+      // în repaus e discret (un buton roșu care nu s-a apăsat încă = alarmă falsă);
+      // roșul apare la hover și, plin, doar când e armat
       className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
-        armed ? 'bg-[#D64545] text-white' : 'bg-[#F8DEDE] text-[#B23A3A] hover:bg-[#F3CACA]'
+        armed
+          ? 'bg-[#D64545] text-white'
+          : 'text-[#5B6673] hover:bg-[#F8DEDE] hover:text-[#B23A3A]'
       } ${className}`}
     >
       {armed ? armedLabel : label}
@@ -185,7 +196,7 @@ export function BackLink({ label, onClick }: { label: string; onClick: () => voi
   return (
     <button
       onClick={onClick}
-      className="mb-4 flex items-center gap-1 text-sm font-medium text-[#115468] hover:underline"
+      className="mb-4 flex items-center gap-1 text-sm font-medium text-[#0D1A2D] hover:underline"
     >
       <span aria-hidden>←</span> {label}
     </button>

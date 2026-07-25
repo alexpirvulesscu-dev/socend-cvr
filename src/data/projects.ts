@@ -5,6 +5,8 @@
 import { useCallback, useEffect, useReducer } from 'react'
 import { supabase } from '../lib/supabase'
 import {
+  eacCost,
+  forecastMargin,
   jobKpis,
   projectKpis,
   type BillingInput,
@@ -92,9 +94,14 @@ export interface JobRow {
   start_date: string
   end_date: string
   sort_order: number
+  // planul INIȚIAL, înghețat la creare (0017); nu se schimbă din Gantt
+  baseline_start_date: string | null
+  baseline_end_date: string | null
   tasks: TaskRow[]
   cvr_job_budgets: BudgetRow[]
   cvr_cost_entries: CostRow[]
+  // situația de lucrări a jobului (0017). Vezi nota de toleranță de la ProjectRow.
+  cvr_job_billing: BillingRow | BillingRow[] | null
 }
 
 export interface BillingRow {
@@ -102,6 +109,19 @@ export interface BillingRow {
   certificat: number
   facturat: number
   incasat: number
+}
+
+const EMPTY_BILLING: BillingInput = { depus: 0, certificat: 0, facturat: 0, incasat: 0 }
+
+/** PostgREST dă obiect pentru relația 1:1; array-ul e plasa de siguranță post-migrare. */
+export function billingOf(row: BillingRow | BillingRow[] | null | undefined): BillingInput {
+  const b = (Array.isArray(row) ? row[0] : row) ?? EMPTY_BILLING
+  return {
+    depus: Number(b.depus),
+    certificat: Number(b.certificat),
+    facturat: Number(b.facturat),
+    incasat: Number(b.incasat),
+  }
 }
 
 export interface ProjectRow {
@@ -118,11 +138,8 @@ export interface ProjectRow {
   is_small: boolean
   sort_order: number
   jobs: JobRow[]
-  // PostgREST întoarce OBIECT pentru relația 1:1 (unique pe project_id).
-  // Toleranța pentru array de mai jos NU e un caz real de date, ci o plasă de
-  // siguranță pentru fereastra în care cache-ul de schemă PostgREST nu a
-  // detectat încă constrângerea unique (imediat după migrări).
-  cvr_billing: BillingRow | BillingRow[] | null
+  // Facturarea NU mai stă pe proiect: e suma situațiilor joburilor (0017).
+  // Tabelul `cvr_billing` rămâne în DB ca istoric, dar nu se mai citește.
 }
 
 // ── Arborele îmbogățit cu KPI-uri ────────────────────────────────────────
@@ -157,8 +174,6 @@ export function todayIso(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
-const EMPTY_BILLING: BillingInput = { depus: 0, certificat: 0, facturat: 0, incasat: 0 }
-
 function sumByCategory(rows: { category: CostCategory; amount: number }[]) {
   const out = {
     manopera: 0,
@@ -175,6 +190,8 @@ function toJobInput(job: JobRow): JobInput {
   return {
     startDate: job.start_date,
     endDate: job.end_date,
+    baselineEndDate: job.baseline_end_date,
+    billing: billingOf(job.cvr_job_billing),
     budgetTotal: job.cvr_job_budgets.reduce((s, b) => s + Number(b.amount), 0),
     actualCost: job.cvr_cost_entries.reduce((s, c) => s + Number(c.amount), 0),
     tasks: job.tasks.map((t) => ({
@@ -207,19 +224,13 @@ export function decorateProject(p: ProjectRow, today: string): ProjectWithKpis {
       budgetByCategory: sumByCategory(j.cvr_job_budgets),
       costByCategory: sumByCategory(j.cvr_cost_entries),
     }))
-  const billing =
-    (Array.isArray(p.cvr_billing) ? p.cvr_billing[0] : p.cvr_billing) ?? EMPTY_BILLING
-  const billingInput: BillingInput = {
-    depus: Number(billing.depus),
-    certificat: Number(billing.certificat),
-    facturat: Number(billing.facturat),
-    incasat: Number(billing.incasat),
-  }
+  // facturarea proiectului = suma situațiilor joburilor (0017)
+  const kpis = projectKpis(jobs.map(toJobInput), today)
   return {
     ...p,
     jobs,
-    billing: billingInput,
-    kpis: projectKpis(p.jobs.map(toJobInput), billingInput, today),
+    billing: kpis.billing,
+    kpis,
     pnlCosts: null,
   }
 }
@@ -239,6 +250,8 @@ function applyPnlCost(
   if (!c) return p
   const earnedBudget = p.kpis.costVariance + p.kpis.actualCost // buget × %realizat
   const ev = p.kpis.ev
+  // prognoza trebuie refăcută cu costul REAL din P&L, nu cu cel manual
+  const eac = eacCost(c.total, p.kpis.donePct)
   return {
     ...p,
     pnlCosts: c,
@@ -247,6 +260,8 @@ function applyPnlCost(
       actualCost: c.total,
       costVariance: earnedBudget - c.total,
       margin: ev > 0 ? (ev - c.total) / ev : 0,
+      eacCost: eac,
+      forecastMargin: forecastMargin(p.kpis.value, eac),
     },
   }
 }
@@ -283,10 +298,12 @@ export function redecorateProject(
       budgetByCategory: sumByCategory(j.cvr_job_budgets),
       costByCategory: sumByCategory(j.cvr_cost_entries),
     }))
+  const kpis = projectKpis(jobs.map(toJobInput), today)
   const base: ProjectWithKpis = {
     ...p,
     jobs,
-    kpis: projectKpis(jobs.map(toJobInput), p.billing, today),
+    billing: kpis.billing, // rollup din situațiile joburilor
+    kpis,
     pnlCosts: null,
   }
   return applyPnlCost(base, pnlMap)
@@ -320,15 +337,15 @@ export async function fetchPnlCosts(): Promise<Map<string, PnlCosts>> {
 const TREE_SELECT = `
   id, name, client, billing_mode, contract_value, start_date, end_date, active, location, pnl_proiect_id, is_small, sort_order,
   jobs (
-    id, name, start_date, end_date, sort_order,
+    id, name, start_date, end_date, sort_order, baseline_start_date, baseline_end_date,
     tasks (
       id, name, value, status, sort_order, planned_man_days, start_date, end_date, target_invoice_date,
       deliverables ( id, name, um, qty_total, qty_done, weight, sort_order, planned_man_days )
     ),
     cvr_job_budgets ( category, amount ),
-    cvr_cost_entries ( id, category, amount, description, entry_date )
-  ),
-  cvr_billing ( depus, certificat, facturat, incasat )
+    cvr_cost_entries ( id, category, amount, description, entry_date ),
+    cvr_job_billing ( depus, certificat, facturat, incasat )
+  )
 `
 
 /** Citește tot arborele, cu KPI-urile calculate la zi. */
@@ -352,8 +369,8 @@ export async function fetchProjectTree(): Promise<ProjectWithKpis[]> {
  * (apelantul cunoaște valorile vechi) + toast.
  */
 export type EntityPatch =
-  | { kind: 'project'; id: string; patch: Partial<Omit<ProjectRow, 'jobs' | 'cvr_billing'>> }
-  | { kind: 'billing'; id: string; patch: Partial<BillingInput> } // id = projectId
+  | { kind: 'project'; id: string; patch: Partial<Omit<ProjectRow, 'jobs'>> }
+  | { kind: 'billing'; id: string; patch: Partial<BillingInput> } // id = jobId (situația jobului)
   | { kind: 'job'; id: string; patch: Partial<Omit<JobRow, 'tasks'>> }
   | { kind: 'task'; id: string; patch: Partial<TaskRow> }
   | { kind: 'deliverable'; id: string; patch: Partial<DeliverableRow> }
@@ -378,8 +395,18 @@ function patchProject(p: ProjectWithKpis, a: EntityPatch): ProjectWithKpis | nul
   switch (a.kind) {
     case 'project':
       return p.id === a.id ? { ...p, ...a.patch } : null
-    case 'billing':
-      return p.id === a.id ? { ...p, billing: { ...p.billing, ...a.patch } } : null
+    case 'billing': {
+      // situația de lucrări a UNUI job; totalul proiectului se recalculează în redecorate
+      if (!p.jobs.some((j) => j.id === a.id)) return null
+      return {
+        ...p,
+        jobs: p.jobs.map((j) =>
+          j.id === a.id
+            ? { ...j, cvr_job_billing: { ...billingOf(j.cvr_job_billing), ...a.patch } }
+            : j
+        ),
+      }
+    }
     case 'job': {
       if (!p.jobs.some((j) => j.id === a.id)) return null
       return { ...p, jobs: p.jobs.map((j) => (j.id === a.id ? { ...j, ...a.patch } : j)) }

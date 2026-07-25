@@ -6,7 +6,7 @@
 //  - drag cu Pointer Events + setPointerCapture (nu HTML5 DnD): fără imaginea-
 //    fantomă, funcționează și pe touch; în timpul tragerii nu se scrie nimic —
 //    doar la eliberare
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { EntityPatch, JobWithKpis, ProjectWithKpis, TaskRow } from '../../data/projects'
 import { shiftJobWithTasks, updateJobDates, updateTaskDates } from '../../data/mutations'
 import { taskPct } from '../../domain/kpi'
@@ -175,6 +175,192 @@ interface DragState {
   moved: boolean
 }
 
+// ── Un rând, memoizat ────────────────────────────────────────────────────
+// Motivul memoizării: în timpul unei trageri starea se schimbă la fiecare
+// pixel. Fără memo, TOATE rândurile + capul de tabel s-ar re-randa pe fiecare
+// frame. Cu props stabile (callback-uri din useCallback, rânduri din useMemo),
+// se re-randează DOAR rândul tras.
+interface RowProps {
+  row: GRow
+  rangeStart: string
+  dayWidth: number
+  trackW: number
+  today: string
+  selected: boolean
+  /** indicii de previzualizare — non-null DOAR pentru rândul tras */
+  previewStartIdx: number | null
+  previewEndIdx: number | null
+  onToggleCaret: (key: string) => void
+  onPointerDown: (e: React.PointerEvent, r: GRow, mode: DragMode) => void
+  onPointerMove: (e: React.PointerEvent) => void
+  onPointerUp: (e: React.PointerEvent, r: GRow) => void
+  onPointerCancel: () => void
+}
+
+const GanttRow = memo(function GanttRow({
+  row: r,
+  rangeStart,
+  dayWidth,
+  trackW,
+  today,
+  selected,
+  previewStartIdx,
+  previewEndIdx,
+  onToggleCaret,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onPointerCancel,
+}: RowProps) {
+  const isDragging = previewStartIdx !== null && previewEndIdx !== null
+  let geom: { left: number; width: number } | null = null
+  if (r.start && r.end) {
+    const sIdx = previewStartIdx ?? dayIndex(rangeStart, r.start)
+    const eIdx = previewEndIdx ?? dayIndex(rangeStart, r.end)
+    geom = { left: sIdx * dayWidth, width: (eIdx - sIdx + 1) * dayWidth }
+  }
+  const previewStart = isDragging ? addDays(rangeStart, previewStartIdx!) : r.start
+  const previewEnd = isDragging ? addDays(rangeStart, previewEndIdx!) : r.end
+  // ținta de facturare: rombul devine ambru dacă data a trecut (trebuia facturat)
+  const invoiceOverdue = r.invoiceDate !== null && r.invoiceDate !== undefined && r.invoiceDate < today
+
+  return (
+    <div
+      className={`group/row relative z-10 flex items-center border-b border-[#F3F1EC] hover:bg-[#FAF9F6] ${
+        selected ? 'bg-[#F1EEE9]' : ''
+      }`}
+      style={{ height: ROW_H }}
+    >
+      {/* eticheta din stânga (lipită la scroll orizontal) */}
+      <div
+        className={`sticky left-0 z-20 flex h-full shrink-0 items-center gap-1 border-r border-[#E8E8E8] pr-2 group-hover/row:bg-[#FAF9F6] ${
+          selected ? 'bg-[#F1EEE9]' : 'bg-white'
+        }`}
+        style={{ width: LABEL_W, paddingLeft: 8 + r.depth * 18 }}
+      >
+        {r.caret ? (
+          <button
+            onClick={() => onToggleCaret(r.key)}
+            aria-label={r.collapsed ? 'Extinde' : 'Restrânge'}
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[#5B6673] hover:bg-[#EEECE7]"
+          >
+            <span
+              aria-hidden
+              className={`text-xs transition-transform ${r.collapsed ? '' : 'rotate-90'}`}
+            >
+              ›
+            </span>
+          </button>
+        ) : (
+          <span className="w-5 shrink-0" />
+        )}
+        <span
+          aria-hidden
+          className={`h-2 w-2 shrink-0 rounded-full ${
+            r.kind === 'project'
+              ? 'bg-[#14263F]'
+              : r.kind === 'job'
+                ? 'bg-[#8798AC]'
+                : 'bg-[#C9C5BC]'
+          }`}
+        />
+        <span
+          className={`min-w-0 flex-1 truncate text-sm ${
+            r.kind === 'project'
+              ? 'font-semibold'
+              : r.kind === 'job'
+                ? 'font-medium'
+                : 'text-[#5B6673]'
+          }`}
+          title={r.label}
+        >
+          {r.label}
+        </span>
+        <span className="shrink-0 text-xs font-medium tabular-nums text-[#5B6673]">
+          {pct(r.donePct, 0)}
+        </span>
+      </div>
+
+      {/* pista cu bara */}
+      <div className="relative h-full" style={{ width: trackW }}>
+        {geom && r.kind === 'project' && (
+          <div
+            className="absolute top-1/2 h-2.5 -translate-y-1/2 overflow-hidden rounded-full bg-[#14263F]/15"
+            style={{ left: geom.left, width: geom.width }}
+            title={`${dataRo(r.start!)} – ${dataRo(r.end!)} (calculat din joburi)`}
+          >
+            <div
+              className="h-full rounded-full bg-[#14263F]"
+              style={{ width: `${Math.min(r.donePct, 1) * 100}%` }}
+            />
+          </div>
+        )}
+        {geom && r.kind !== 'project' && (
+          <div
+            onPointerDown={(e) => onPointerDown(e, r, 'move')}
+            onPointerMove={onPointerMove}
+            onPointerUp={(e) => onPointerUp(e, r)}
+            onPointerCancel={onPointerCancel}
+            className={`group absolute top-1/2 -translate-y-1/2 select-none rounded-lg ${
+              r.kind === 'job' ? 'h-5 bg-[#B9C6D6]' : 'h-6 bg-[#EEECE7]'
+            } ${r.ghost ? 'border border-dashed border-[#8798AC] !bg-transparent' : 'shadow-[0_1px_2px_rgba(13,26,45,0.10)]'} ${
+              r.outside ? 'ring-2 ring-[#F0A800]' : ''
+            } ${isDragging ? 'z-10 shadow-lg ring-2 ring-[#14263F]' : ''} cursor-grab active:cursor-grabbing`}
+            style={{ left: geom.left, width: Math.max(geom.width, 6), touchAction: 'none' }}
+            title={`${r.label} · ${dataRo(previewStart!)} – ${dataRo(previewEnd!)}${
+              r.ghost ? ' · fără plan propriu (ca jobul) — trage ca să îl setezi' : ''
+            }${r.outside ? ' · în afara intervalului jobului' : ''}`}
+          >
+            {!r.ghost && (
+              <div
+                className={`h-full rounded-lg ${r.kind === 'job' ? 'bg-[#14263F]' : 'bg-[#58A834]'}`}
+                style={{ width: `${Math.min(r.donePct, 1) * 100}%` }}
+              />
+            )}
+            {isDragging && (
+              <span className="absolute -top-5 left-0 whitespace-nowrap rounded bg-[#14263F] px-1.5 py-0.5 text-[10px] font-medium text-white">
+                {dataRo(previewStart!)} – {dataRo(previewEnd!)}
+              </span>
+            )}
+            <div
+              onPointerDown={(e) => onPointerDown(e, r, 'resize-l')}
+              onPointerMove={onPointerMove}
+              onPointerUp={(e) => onPointerUp(e, r)}
+              onPointerCancel={onPointerCancel}
+              className="absolute -left-1 top-0 h-full w-2.5 cursor-ew-resize rounded-l-lg opacity-0 transition-opacity group-hover:opacity-100"
+              style={{ touchAction: 'none' }}
+            >
+              <div className="mx-auto mt-1 h-[calc(100%-8px)] w-1 rounded bg-[#0D1A2D]/25" />
+            </div>
+            <div
+              onPointerDown={(e) => onPointerDown(e, r, 'resize-r')}
+              onPointerMove={onPointerMove}
+              onPointerUp={(e) => onPointerUp(e, r)}
+              onPointerCancel={onPointerCancel}
+              className="absolute -right-1 top-0 h-full w-2.5 cursor-ew-resize rounded-r-lg opacity-0 transition-opacity group-hover:opacity-100"
+              style={{ touchAction: 'none' }}
+            >
+              <div className="mx-auto mt-1 h-[calc(100%-8px)] w-1 rounded bg-[#0D1A2D]/25" />
+            </div>
+          </div>
+        )}
+        {/* ținta de facturare — romb; ambru dacă data a trecut */}
+        {r.kind === 'task' && r.invoiceDate && r.invoiceDate >= rangeStart && (
+          <div
+            className={`absolute top-1/2 z-10 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rotate-45 border border-white ${
+              invoiceOverdue ? 'bg-[#F0A800]' : 'bg-[#14263F]'
+            }`}
+            style={{ left: dayIndex(rangeStart, r.invoiceDate) * dayWidth + dayWidth / 2 }}
+            title={`Facturare țintă · ${dataRo(r.invoiceDate)}${
+              invoiceOverdue ? ' · data a trecut' : ''
+            }`}
+          />
+        )}
+      </div>
+    </div>
+  )
+})
+
 export function GanttChart({
   projects,
   focusProjectId,
@@ -191,7 +377,15 @@ export function GanttChart({
   const [zoom, setZoom] = useState<ZoomLevel>('luna')
   const [lookahead, setLookahead] = useState(false)
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
-  const [drag, setDrag] = useState<DragState | null>(null)
+  // Starea de tragere stă într-un REF (sursa de adevăr pentru handlere), iar în
+  // state se pune doar minimul de care are nevoie randarea: ce rând e tras și
+  // între ce zile. Așa, la fiecare frame se re-randează UN singur rând.
+  const dragRef = useRef<DragState | null>(null)
+  const [dragView, setDragView] = useState<{
+    key: string
+    startIdx: number
+    endIdx: number
+  } | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const dayWidth = ZOOM_LEVELS[zoom]
 
@@ -281,27 +475,30 @@ export function GanttChart({
 
   // Escape anulează tragerea în curs
   useEffect(() => {
-    if (!drag) return
+    if (!dragView) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setDrag(null)
+      if (e.key === 'Escape') {
+        dragRef.current = null
+        setDragView(null)
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [drag])
+  }, [dragView])
 
-  function toggleCaret(key: string) {
+  const toggleCaret = useCallback((key: string) => {
     setCollapsed((old) => {
       const next = new Set(old)
       if (next.has(key)) next.delete(key)
       else next.add(key)
       return next
     })
-  }
+  }, [])
 
   /** Comite mutarea/redimensionarea la eliberarea barei — optimist + revert. */
-  function commitDrag(d: DragState) {
-    const newStart = addDays(range.start, d.startIdx + (d.mode !== 'resize-r' ? d.deltaDays : 0))
-    const newEnd = addDays(range.start, d.endIdx + (d.mode !== 'resize-l' ? d.deltaDays : 0))
+  const commitDrag = useCallback((d: DragState, rangeStart: string) => {
+    const newStart = addDays(rangeStart, d.startIdx + (d.mode !== 'resize-r' ? d.deltaDays : 0))
+    const newEnd = addDays(rangeStart, d.endIdx + (d.mode !== 'resize-l' ? d.deltaDays : 0))
     const r = d.row
 
     if (r.kind === 'task' && r.task) {
@@ -366,50 +563,67 @@ export function GanttChart({
         })
       }
     }
-  }
+  }, [patchEntity])
 
-  function onBarPointerDown(e: React.PointerEvent, r: GRow, mode: DragMode) {
-    if (!r.editable || !r.start || !r.end) return
-    if (e.button !== 0) return
-    e.stopPropagation()
-    ;(e.currentTarget as Element).setPointerCapture(e.pointerId)
-    setDrag({
-      row: r,
-      mode,
-      originX: e.clientX,
-      startIdx: dayIndex(range.start, r.start),
-      endIdx: dayIndex(range.start, r.end),
-      deltaDays: 0,
-      moved: false,
-    })
-  }
+  // Handlerele sunt STABILE (useCallback) ca memo-ul rândurilor să funcționeze;
+  // starea vie a tragerii trăiește în dragRef, nu în props.
+  const rangeStart = range.start
+  const onBarPointerDown = useCallback(
+    (e: React.PointerEvent, r: GRow, mode: DragMode) => {
+      if (!r.editable || !r.start || !r.end) return
+      if (e.button !== 0) return
+      e.stopPropagation()
+      ;(e.currentTarget as Element).setPointerCapture(e.pointerId)
+      const startIdx = dayIndex(rangeStart, r.start)
+      const endIdx = dayIndex(rangeStart, r.end)
+      dragRef.current = { row: r, mode, originX: e.clientX, startIdx, endIdx, deltaDays: 0, moved: false }
+      setDragView({ key: r.key, startIdx, endIdx })
+    },
+    [rangeStart]
+  )
 
-  function onBarPointerMove(e: React.PointerEvent) {
-    if (!drag) return
-    const raw = pxToDeltaDays(e.clientX - drag.originX, dayWidth)
-    let d = raw
-    if (drag.mode === 'resize-l') d = Math.min(raw, drag.endIdx - drag.startIdx)
-    if (drag.mode === 'resize-r') d = Math.max(raw, drag.startIdx - drag.endIdx)
-    const moved = drag.moved || Math.abs(e.clientX - drag.originX) > 4
-    if (d !== drag.deltaDays || moved !== drag.moved) setDrag({ ...drag, deltaDays: d, moved })
-  }
+  const onBarPointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      const drag = dragRef.current
+      if (!drag) return
+      const raw = pxToDeltaDays(e.clientX - drag.originX, dayWidth)
+      let d = raw
+      if (drag.mode === 'resize-l') d = Math.min(raw, drag.endIdx - drag.startIdx)
+      if (drag.mode === 'resize-r') d = Math.max(raw, drag.startIdx - drag.endIdx)
+      drag.moved = drag.moved || Math.abs(e.clientX - drag.originX) > 4
+      if (d === drag.deltaDays) return // aceeași zi → nicio re-randare
+      drag.deltaDays = d
+      setDragView({
+        key: drag.row.key,
+        startIdx: drag.startIdx + (drag.mode !== 'resize-r' ? d : 0),
+        endIdx: drag.endIdx + (drag.mode !== 'resize-l' ? d : 0),
+      })
+    },
+    [dayWidth]
+  )
 
-  function onBarPointerUp(e: React.PointerEvent, r: GRow) {
-    // pointerup-ul retargetat pe mâner BULEȘTE spre bară — fără stopPropagation
-    // comiterea ar rula de două ori (două scrieri Supabase pe fiecare resize)
-    e.stopPropagation()
-    if (!drag) return
-    if (drag.deltaDays === 0) {
-      if (r.caret) toggleCaret(r.key) // click pe o bară-părinte pliază/desface
-    } else if (drag.moved) {
-      commitDrag(drag)
-    }
-    setDrag(null)
-  }
+  const onBarPointerUp = useCallback(
+    (e: React.PointerEvent, r: GRow) => {
+      // pointerup-ul retargetat pe mâner BULEȘTE spre bară — fără stopPropagation
+      // comiterea ar rula de două ori (două scrieri Supabase pe fiecare resize)
+      e.stopPropagation()
+      const drag = dragRef.current
+      if (!drag) return
+      if (drag.deltaDays === 0) {
+        if (r.caret) toggleCaret(r.key) // click pe o bară-părinte pliază/desface
+      } else if (drag.moved) {
+        commitDrag(drag, rangeStart)
+      }
+      dragRef.current = null
+      setDragView(null)
+    },
+    [commitDrag, rangeStart, toggleCaret]
+  )
 
-  function onBarPointerCancel() {
-    setDrag(null)
-  }
+  const onBarPointerCancel = useCallback(() => {
+    dragRef.current = null
+    setDragView(null)
+  }, [])
 
   const zoomChip = (z: ZoomLevel, label: string) => (
     <button
@@ -569,172 +783,24 @@ export function GanttChart({
               </div>
 
               {rows.map((r) => {
-                const isDragging = drag?.row.key === r.key
-                let geom: { left: number; width: number } | null = null
-                if (r.start && r.end) {
-                  let sIdx = dayIndex(range.start, r.start)
-                  let eIdx = dayIndex(range.start, r.end)
-                  if (isDragging && drag) {
-                    if (drag.mode !== 'resize-r') sIdx = drag.startIdx + drag.deltaDays
-                    if (drag.mode !== 'resize-l') eIdx = drag.endIdx + drag.deltaDays
-                    if (drag.mode === 'resize-l') eIdx = drag.endIdx
-                    if (drag.mode === 'resize-r') sIdx = drag.startIdx
-                  }
-                  geom = { left: sIdx * dayWidth, width: (eIdx - sIdx + 1) * dayWidth }
-                }
-                const previewStart =
-                  isDragging && drag
-                    ? addDays(
-                        range.start,
-                        drag.startIdx + (drag.mode !== 'resize-r' ? drag.deltaDays : 0)
-                      )
-                    : r.start
-                const previewEnd =
-                  isDragging && drag
-                    ? addDays(range.start, drag.endIdx + (drag.mode !== 'resize-l' ? drag.deltaDays : 0))
-                    : r.end
-
+                const dragging = dragView?.key === r.key
                 return (
-                  <div
+                  <GanttRow
                     key={r.key}
-                    className="group/row relative z-10 flex items-center border-b border-[#F3F1EC] hover:bg-[#FAF9F6]"
-                    style={{ height: ROW_H }}
-                  >
-                    {/* eticheta din stânga (lipită la scroll orizontal) */}
-                    <div
-                      className="sticky left-0 z-20 flex h-full shrink-0 items-center gap-1 border-r border-[#E8E8E8] bg-white pr-2 group-hover/row:bg-[#FAF9F6]"
-                      style={{ width: LABEL_W, paddingLeft: 8 + r.depth * 18 }}
-                    >
-                      {r.caret ? (
-                        <button
-                          onClick={() => toggleCaret(r.key)}
-                          aria-label={r.collapsed ? 'Extinde' : 'Restrânge'}
-                          className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[#5B6673] hover:bg-[#EEECE7]"
-                        >
-                          <span
-                            aria-hidden
-                            className={`text-xs transition-transform ${r.collapsed ? '' : 'rotate-90'}`}
-                          >
-                            ›
-                          </span>
-                        </button>
-                      ) : (
-                        <span className="w-5 shrink-0" />
-                      )}
-                      {/* pastilă de nivel */}
-                      <span
-                        aria-hidden
-                        className={`h-2 w-2 shrink-0 rounded-full ${
-                          r.kind === 'project'
-                            ? 'bg-[#14263F]'
-                            : r.kind === 'job'
-                              ? 'bg-[#8798AC]'
-                              : 'bg-[#58A834]'
-                        }`}
-                      />
-                      <span
-                        className={`min-w-0 flex-1 truncate text-sm ${
-                          r.kind === 'project'
-                            ? 'font-semibold'
-                            : r.kind === 'job'
-                              ? 'font-medium'
-                              : 'text-[#5B6673]'
-                        }`}
-                        title={r.label}
-                      >
-                        {r.label}
-                      </span>
-                      <span className="shrink-0 text-xs font-medium tabular-nums text-[#5B6673]">
-                        {pct(r.donePct, 0)}
-                      </span>
-                    </div>
-
-                    {/* pista cu bara */}
-                    <div className="relative h-full" style={{ width: trackW }}>
-                      {geom && r.kind === 'project' && (
-                        <div
-                          className="absolute top-1/2 h-2.5 -translate-y-1/2 overflow-hidden rounded-full bg-[#14263F]/15"
-                          style={{ left: geom.left, width: geom.width }}
-                          title={`${dataRo(r.start!)} – ${dataRo(r.end!)} (calculat din joburi)`}
-                        >
-                          <div
-                            className="h-full rounded-full bg-[#14263F]"
-                            style={{ width: `${Math.min(r.donePct, 1) * 100}%` }}
-                          />
-                        </div>
-                      )}
-                      {geom && r.kind !== 'project' && (
-                        <div
-                          onPointerDown={(e) => onBarPointerDown(e, r, 'move')}
-                          onPointerMove={onBarPointerMove}
-                          onPointerUp={(e) => onBarPointerUp(e, r)}
-                          onPointerCancel={onBarPointerCancel}
-                          className={`group absolute top-1/2 -translate-y-1/2 select-none rounded-lg ${
-                            r.kind === 'job' ? 'h-5 bg-[#B9C6D6]' : 'h-6 bg-[#DDEDDC]'
-                          } ${r.ghost ? 'border border-dashed border-[#8798AC] !bg-transparent' : 'shadow-[0_1px_2px_rgba(13,26,45,0.10)]'} ${
-                            r.outside ? 'ring-2 ring-[#F0A800]' : ''
-                          } ${isDragging ? 'z-10 shadow-lg ring-2 ring-[#58A834]' : ''} cursor-grab active:cursor-grabbing`}
-                          style={{
-                            left: geom.left,
-                            width: Math.max(geom.width, 6),
-                            touchAction: 'none',
-                          }}
-                          title={`${r.label} · ${dataRo(previewStart!)} – ${dataRo(previewEnd!)}${
-                            r.ghost ? ' · fără plan propriu (ca jobul) — trage ca să îl setezi' : ''
-                          }${r.outside ? ' · în afara intervalului jobului' : ''}`}
-                        >
-                          {!r.ghost && (
-                            <div
-                              className={`h-full rounded-lg ${r.kind === 'job' ? 'bg-[#14263F]' : 'bg-[#58A834]'}`}
-                              style={{ width: `${Math.min(r.donePct, 1) * 100}%` }}
-                            />
-                          )}
-                          {/* eticheta cu perioada în timpul tragerii */}
-                          {isDragging && (
-                            <span className="absolute -top-5 left-0 whitespace-nowrap rounded bg-[#14263F] px-1.5 py-0.5 text-[10px] font-medium text-white">
-                              {dataRo(previewStart!)} – {dataRo(previewEnd!)}
-                            </span>
-                          )}
-                          {/* mânerele de redimensionare */}
-                          <div
-                            onPointerDown={(e) => onBarPointerDown(e, r, 'resize-l')}
-                            onPointerMove={onBarPointerMove}
-                            onPointerUp={(e) => onBarPointerUp(e, r)}
-                            onPointerCancel={onBarPointerCancel}
-                            className="absolute -left-1 top-0 h-full w-2.5 cursor-ew-resize rounded-l-lg opacity-0 transition-opacity group-hover:opacity-100"
-                            style={{ touchAction: 'none' }}
-                          >
-                            <div className="mx-auto mt-1 h-[calc(100%-8px)] w-1 rounded bg-white/70" />
-                          </div>
-                          <div
-                            onPointerDown={(e) => onBarPointerDown(e, r, 'resize-r')}
-                            onPointerMove={onBarPointerMove}
-                            onPointerUp={(e) => onBarPointerUp(e, r)}
-                            onPointerCancel={onBarPointerCancel}
-                            className="absolute -right-1 top-0 h-full w-2.5 cursor-ew-resize rounded-r-lg opacity-0 transition-opacity group-hover:opacity-100"
-                            style={{ touchAction: 'none' }}
-                          >
-                            <div className="mx-auto mt-1 h-[calc(100%-8px)] w-1 rounded bg-white/70" />
-                          </div>
-                        </div>
-                      )}
-                      {/* ținta de facturare — romb pe pistă la data planificată */}
-                      {r.kind === 'task' &&
-                        r.invoiceDate &&
-                        r.invoiceDate >= range.start &&
-                        (() => {
-                          const x =
-                            dayIndex(range.start, r.invoiceDate) * dayWidth + dayWidth / 2
-                          return (
-                            <div
-                              className="absolute top-1/2 z-10 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rotate-45 border border-white bg-[#115468]"
-                              style={{ left: x }}
-                              title={`Facturare țintă · ${dataRo(r.invoiceDate)}`}
-                            />
-                          )
-                        })()}
-                    </div>
-                  </div>
+                    row={r}
+                    rangeStart={range.start}
+                    dayWidth={dayWidth}
+                    trackW={trackW}
+                    today={today}
+                    selected={false}
+                    previewStartIdx={dragging ? dragView!.startIdx : null}
+                    previewEndIdx={dragging ? dragView!.endIdx : null}
+                    onToggleCaret={toggleCaret}
+                    onPointerDown={onBarPointerDown}
+                    onPointerMove={onBarPointerMove}
+                    onPointerUp={onBarPointerUp}
+                    onPointerCancel={onBarPointerCancel}
+                  />
                 )
               })}
             </div>

@@ -3,21 +3,31 @@
 // (curățenia unui proiect abia creat, la eșec de salvare).
 import { supabase } from '../lib/supabase'
 import type { TaskStatus } from '../domain/kpi'
-import type { CostCategory } from './projects'
+import type { CostCategory, CostRow } from './projects'
 
-/** Adaugă un cost real pe un job (formularul „Adaugă cost"). */
+/**
+ * Adaugă un cost real pe un job (formularul „Adaugă cost").
+ * Întoarce rândul creat, ca UI-ul să-l poată insera local (patch optimist) în loc
+ * să re-citească tot arborele — altfel operația asta ar încetini pe măsură ce se
+ * adună istoricul de costuri.
+ */
 export async function addCostEntry(
   jobId: string,
   entry: { category: CostCategory; amount: number; description: string; entryDate: string }
-): Promise<void> {
-  const { error } = await supabase.from('cvr_cost_entries').insert({
-    job_id: jobId,
-    category: entry.category,
-    amount: entry.amount,
-    description: entry.description || null,
-    entry_date: entry.entryDate,
-  })
+): Promise<CostRow> {
+  const { data, error } = await supabase
+    .from('cvr_cost_entries')
+    .insert({
+      job_id: jobId,
+      category: entry.category,
+      amount: entry.amount,
+      description: entry.description || null,
+      entry_date: entry.entryDate,
+    })
+    .select('id, category, amount, description, entry_date')
+    .single()
   if (error) throw error
+  return data as CostRow
 }
 
 /** Schimbă statusul unui task (Pornește / Marchează finalizat / Redeschide). */
@@ -94,31 +104,33 @@ export async function updateProject(
   await syncPnl(pnlId, { nume: p.name })
 }
 
+/**
+ * Persistă ordinea (drag & drop) într-o SINGURĂ cerere, prin RPC tranzacțional.
+ * Varianta veche trimitea câte un UPDATE pe rând: dacă pica cererea a 7-a dintr-a
+ * 15, ordinea rămânea salvată pe jumătate, fără ca cineva să afle.
+ */
+async function setOrder(table: 'projects' | 'jobs' | 'tasks', idsInOrder: string[]): Promise<void> {
+  if (idsInOrder.length === 0) return
+  const { error } = await supabase.rpc('cvr_set_sort_order', {
+    p_table: table,
+    p_ids: idsInOrder,
+  })
+  if (error) throw error
+}
+
 /** Persistă ordinea manuală (drag & drop) a proiectelor. */
 export async function setProjectsOrder(idsInOrder: string[]): Promise<void> {
-  for (const [i, id] of idsInOrder.entries()) {
-    const { error } = await supabase
-      .from('projects')
-      .update({ sort_order: i + 1 })
-      .eq('id', id)
-    if (error) throw error
-  }
+  await setOrder('projects', idsInOrder)
 }
 
 /** Persistă ordinea joburilor în cadrul unui proiect (drag & drop în coloană). */
 export async function setJobsOrder(idsInOrder: string[]): Promise<void> {
-  for (const [i, id] of idsInOrder.entries()) {
-    const { error } = await supabase.from('jobs').update({ sort_order: i + 1 }).eq('id', id)
-    if (error) throw error
-  }
+  await setOrder('jobs', idsInOrder)
 }
 
 /** Persistă ordinea taskurilor în cadrul unui job (drag & drop în coloană). */
 export async function setTasksOrder(idsInOrder: string[]): Promise<void> {
-  for (const [i, id] of idsInOrder.entries()) {
-    const { error } = await supabase.from('tasks').update({ sort_order: i + 1 }).eq('id', id)
-    if (error) throw error
-  }
+  await setOrder('tasks', idsInOrder)
 }
 
 /** O singură celulă de buget a unui job (editare inline în „Buget vs cost"). */
@@ -155,14 +167,18 @@ export async function deleteProject(id: string, pnlId: string | null): Promise<v
   if (error) throw error
 }
 
-/** Fluxul de facturare (Executat/Aprobat/Facturat/Încasat) — corectabil din birou. */
-export async function updateBilling(
-  projectId: string,
+/**
+ * Situația de lucrări a unui JOB (Situație probată → Certificat → Facturat →
+ * Încasat). Facturarea stă pe job (0017); totalul proiectului e suma joburilor.
+ * Upsert: dacă jobul n-are încă rând de facturare, se creează la prima editare.
+ */
+export async function updateJobBilling(
+  jobId: string,
   b: { depus: number; certificat: number; facturat: number; incasat: number }
 ): Promise<void> {
   const { error } = await supabase
-    .from('cvr_billing')
-    .upsert({ project_id: projectId, ...b }, { onConflict: 'project_id' })
+    .from('cvr_job_billing')
+    .upsert({ job_id: jobId, ...b }, { onConflict: 'job_id' })
   if (error) throw error
 }
 
@@ -560,9 +576,8 @@ export async function createProject(p: NewProject): Promise<string> {
       }
     }
 
-    // facturarea pornește de la zero
-    const { error: billErr } = await supabase.from('cvr_billing').insert({ project_id: projectId })
-    if (billErr) throw billErr
+    // facturarea stă pe joburi (0017) și se creează la prima editare (upsert),
+    // deci nu mai e nimic de inițializat aici
 
     // sincron P&L: proiectul nou apare și în lista de proiecte a aplicației P&L
     // (același id în ambele tabele), apoi se leagă prin pnl_proiect_id

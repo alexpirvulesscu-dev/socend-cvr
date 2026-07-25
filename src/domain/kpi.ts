@@ -27,6 +27,10 @@ export interface JobInput {
   budgetTotal: number // suma bugetelor pe cele 5 categorii
   actualCost: number // suma costurilor reale înregistrate
   tasks: TaskInput[]
+  // planul INIȚIAL (înghețat la creare); lipsă = nu avem cu ce compara
+  baselineEndDate?: string | null
+  // facturarea jobului (situații de lucrări); lipsă = zero
+  billing?: BillingInput
 }
 
 export interface BillingInput {
@@ -118,6 +122,74 @@ export function cashPct(incasat: number, facturat: number): number {
   return incasat / facturat
 }
 
+// ── Prognoză și abateri (v3.1) ────────────────────────────────────────────
+
+/** Sub acest procent realizat, extrapolarea costului e zgomot, nu prognoză. */
+export const EAC_MIN_DONE_PCT = 0.1
+
+/**
+ * EAC — costul estimat LA FINAL, dacă ritmul de cheltuire de până acum continuă:
+ * cost_real ÷ procent_realizat. Ex: 362k cheltuiți pentru 18,2% → ~1,99M la final.
+ * Întoarce null cât timp progresul e prea mic ca extrapolarea să însemne ceva.
+ */
+export function eacCost(actualCost: number, donePct: number): number | null {
+  if (donePct < EAC_MIN_DONE_PCT || donePct <= 0) return null
+  return actualCost / donePct
+}
+
+/** Marja estimată la final = (valoare contract − cost estimat la final) ÷ valoare. */
+export function forecastMargin(value: number, eac: number | null): number | null {
+  if (eac === null || value <= 0) return null
+  return (value - eac) / value
+}
+
+/**
+ * Întârzierea exprimată în BANI: (plan% − realizat%) × valoare = lucrări care
+ * ar fi trebuit executate (deci facturabile) până azi și nu sunt.
+ * Negativ = suntem în avans; apelantul decide dacă are sens să-l arate.
+ */
+export function scheduleVarianceLei(planPctValue: number, donePct: number, value: number): number {
+  return (planPctValue - donePct) * value
+}
+
+/**
+ * Alunecarea față de PLANUL INIȚIAL, în zile: cât de târziu s-a mutat finalul
+ * jobului față de data promisă la început. Pozitiv = mai târziu decât am promis.
+ */
+export function baselineSlipDays(baselineEndDate: string | null | undefined, endDate: string): number | null {
+  if (!baselineEndDate) return null
+  return durationDays(baselineEndDate, endDate)
+}
+
+// ── Efort (oameni-zile) ───────────────────────────────────────────────────
+
+export interface EffortKpis {
+  planned: number
+  consumed: number
+  /** oameni-zile „câștigate": planificat × progres fizic */
+  earned: number
+  /** earned − consumed. Pozitiv = economie, negativ = depășire. */
+  variance: number
+  /** cât din bugetul de efort s-a consumat (pentru bara de efort) */
+  consumedPct: number
+}
+
+/**
+ * Efortul, în aceeași monedă în care e dat planul: oameni-zile.
+ * La 100% fizic ai „câștigat" tot planul; diferența față de consumat spune
+ * dacă echipa a produs în ritmul pe care planul l-a cumpărat.
+ */
+export function effortKpis(planned: number, consumed: number, physicalPct: number): EffortKpis {
+  const earned = planned * Math.min(Math.max(physicalPct, 0), 1)
+  return {
+    planned,
+    consumed,
+    earned,
+    variance: earned - consumed,
+    consumedPct: planned > 0 ? consumed / planned : 0,
+  }
+}
+
 // ── Agregări pe job și proiect ────────────────────────────────────────────
 
 export interface JobKpis {
@@ -130,6 +202,13 @@ export interface JobKpis {
   actualCost: number
   costVariance: number
   margin: number
+  /** întârzierea în lei: lucrări care trebuiau executate până azi și nu sunt */
+  scheduleVarianceLei: number
+  /** cât s-a mutat finalul față de planul inițial (null = fără baseline) */
+  baselineSlipDays: number | null
+  /** facturarea jobului (situații de lucrări) + lucrări executate nedepuse */
+  billing: BillingInput
+  wip: number
 }
 
 /**
@@ -151,11 +230,14 @@ export function jobPlanPct(job: JobInput, today: string): number {
   return weighted / value
 }
 
+const EMPTY_BILLING: BillingInput = { depus: 0, certificat: 0, facturat: 0, incasat: 0 }
+
 export function jobKpis(job: JobInput, today: string): JobKpis {
   const value = jobValue(job)
   const ev = jobEV(job)
   const donePct = jobDonePct(job)
   const plan = jobPlanPct(job, today)
+  const billing = job.billing ?? EMPTY_BILLING
   return {
     value,
     ev,
@@ -166,6 +248,10 @@ export function jobKpis(job: JobInput, today: string): JobKpis {
     actualCost: job.actualCost,
     costVariance: costVariance(job.budgetTotal, donePct, job.actualCost),
     margin: margin(ev, job.actualCost),
+    scheduleVarianceLei: scheduleVarianceLei(plan, donePct, value),
+    baselineSlipDays: baselineSlipDays(job.baselineEndDate, job.endDate),
+    billing,
+    wip: wip(ev, billing.depus),
   }
 }
 
@@ -180,34 +266,59 @@ export interface ProjectKpis {
   margin: number // KPI 4: (EV − cost) / EV pe totaluri
   cashPct: number // KPI 5: încasat / facturat
   wip: number // lucrări executate și nedepuse
+  /** KPI 2 în bani: lucrări care trebuiau executate până azi și nu sunt */
+  scheduleVarianceLei: number
+  /** facturarea = suma situațiilor joburilor (rollup) */
+  billing: BillingInput
+  /** prognoza la final (null cât timp progresul e prea mic ca să însemne ceva) */
+  eacCost: number | null
+  forecastMargin: number | null
 }
 
-export function projectKpis(jobs: JobInput[], billing: BillingInput, today: string): ProjectKpis {
+/**
+ * KPI-urile proiectului. Facturarea NU mai e un câmp propriu: se însumează din
+ * situațiile joburilor (vezi migrarea 0017) — de aceea nu mai primește `billing`.
+ */
+export function projectKpis(jobs: JobInput[], today: string): ProjectKpis {
   const value = jobs.reduce((s, j) => s + jobValue(j), 0)
   const ev = jobs.reduce((s, j) => s + jobEV(j), 0)
   const actualCost = jobs.reduce((s, j) => s + j.actualCost, 0)
-  const costVar = jobs.reduce((s, j) => s + jobKpis(j, today).costVariance, 0)
 
   // Mediile de plan/grafic sunt ponderate cu valoarea fiecărui job
   let planWeighted = 0
   let behindWeighted = 0
+  let costVar = 0
+  const billing: BillingInput = { depus: 0, certificat: 0, facturat: 0, incasat: 0 }
   for (const j of jobs) {
     const k = jobKpis(j, today)
     planWeighted += k.planPct * k.value
     behindWeighted += k.behindDays * k.value
+    costVar += k.costVariance
+    billing.depus += k.billing.depus
+    billing.certificat += k.billing.certificat
+    billing.facturat += k.billing.facturat
+    billing.incasat += k.billing.incasat
   }
+
+  const donePct = value > 0 ? ev / value : 0
+  const planPctValue = value > 0 ? planWeighted / value : 0
+  const eac = eacCost(actualCost, donePct)
 
   return {
     value,
     ev,
-    donePct: value > 0 ? ev / value : 0,
-    planPct: value > 0 ? planWeighted / value : 0,
+    donePct,
+    planPct: planPctValue,
     behindDays: value > 0 ? behindWeighted / value : 0,
     actualCost,
     costVariance: costVar,
     margin: margin(ev, actualCost),
     cashPct: cashPct(billing.incasat, billing.facturat),
     wip: wip(ev, billing.depus),
+    scheduleVarianceLei: scheduleVarianceLei(planPctValue, donePct, value),
+    billing,
+    eacCost: eac,
+    forecastMargin: forecastMargin(value, eac),
   }
 }
 

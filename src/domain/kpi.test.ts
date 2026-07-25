@@ -1,18 +1,23 @@
 // Vectorii EXACȚI din BRIEF.md, toleranță ±0,01.
 import { describe, expect, it } from 'vitest'
 import {
+  baselineSlipDays,
   behindDays,
   cashColor,
   cashPct,
   costColor,
   costVariance,
   deliverablePct,
+  eacCost,
+  effortKpis,
+  forecastMargin,
   jobKpis,
   jobPlanPct,
   margin,
   marginColor,
   planPct,
   projectKpis,
+  scheduleVarianceLei,
   scheduleColor,
   taskEV,
   taskPct,
@@ -138,13 +143,20 @@ describe('agregări job și proiect', () => {
     expect(k.margin).toBeCloseTo((35424 - 30000) / 35424, 4)
   })
 
-  it('projectKpis: medii ponderate cu valoarea și cash din facturare', () => {
-    const p = projectKpis([job], { depus: 20000, certificat: 15000, facturat: 10000, incasat: 9500 }, '2026-02-09')
+  it('projectKpis: medii ponderate cu valoarea și cash din facturarea joburilor', () => {
+    // facturarea vine acum din situația jobului (rollup), nu de pe proiect
+    const jobWithBilling = {
+      ...job,
+      billing: { depus: 20000, certificat: 15000, facturat: 10000, incasat: 9500 },
+    }
+    const p = projectKpis([jobWithBilling], '2026-02-09')
     expect(p.ev).toBeCloseTo(35424, 0)
     expect(p.planPct).toBeCloseTo(0.39, 4)
     expect(p.behindDays).toBeCloseTo(3.58, 1)
     expect(p.cashPct).toBeCloseTo(0.95, 4)
     expect(p.wip).toBeCloseTo(15424, 0)
+    // rollup-ul facturării ajunge pe proiect
+    expect(p.billing.facturat).toBe(10000)
   })
 })
 
@@ -213,5 +225,70 @@ describe('jobPlanPct — rafinarea v3 cu datele taskurilor', () => {
   it('fără taskuri → fereastra jobului', () => {
     const job = { ...base, tasks: [] }
     expect(Math.abs(jobPlanPct(job, TODAY) - 0.5)).toBeLessThanOrEqual(0.001)
+  })
+})
+
+describe('prognoză, abateri și efort (v3.1)', () => {
+  it('eacCost: extrapolează costul la final; tace sub 10% realizat', () => {
+    expect(eacCost(362_000, 0.182)).toBeCloseTo(1_989_010, -2)
+    expect(eacCost(1000, 0.05)).toBeNull() // prea devreme ca să însemne ceva
+    expect(eacCost(0, 0)).toBeNull()
+  })
+
+  it('forecastMargin: marja estimată la final', () => {
+    const eac = eacCost(500_000, 0.5) // → 1.000.000
+    expect(eac).toBeCloseTo(1_000_000)
+    expect(forecastMargin(1_250_000, eac)).toBeCloseTo(0.2)
+    expect(forecastMargin(1_000_000, null)).toBeNull()
+  })
+
+  it('scheduleVarianceLei: întârzierea în bani', () => {
+    // ar fi trebuit 50%, s-a făcut 30%, contract 1M → 200k de muncă restantă
+    expect(scheduleVarianceLei(0.5, 0.3, 1_000_000)).toBeCloseTo(200_000)
+    // în avans → negativ
+    expect(scheduleVarianceLei(0.3, 0.5, 1_000_000)).toBeCloseTo(-200_000)
+  })
+
+  it('baselineSlipDays: cât s-a mutat finalul față de planul inițial', () => {
+    expect(baselineSlipDays('2026-09-30', '2026-10-18')).toBe(18)
+    expect(baselineSlipDays('2026-09-30', '2026-09-20')).toBe(-10)
+    expect(baselineSlipDays(null, '2026-10-18')).toBeNull()
+  })
+
+  it('effortKpis: verdictul e în oameni-zile, nu în procente amestecate', () => {
+    // 169 planificate, 139 consumate, 100% fizic → ai câștigat tot planul
+    const done = effortKpis(169, 139, 1)
+    expect(done.earned).toBeCloseTo(169)
+    expect(done.variance).toBeCloseTo(30) // economie de 30 oameni-zile
+    expect(done.consumedPct).toBeCloseTo(139 / 169)
+
+    // 169 planificate, 139 consumate, dar doar 61,5% fizic → depășire
+    const mid = effortKpis(169, 139, 0.615)
+    expect(mid.earned).toBeCloseTo(103.9, 1)
+    expect(mid.variance).toBeLessThan(0)
+    expect(mid.variance).toBeCloseTo(-35.1, 1)
+  })
+
+  it('jobKpis: aduce baseline, întârzierea în lei și facturarea jobului', () => {
+    const j = {
+      startDate: '2026-01-01',
+      endDate: '2026-01-11', // 10 zile
+      baselineEndDate: '2026-01-01',
+      billing: { depus: 1000, certificat: 0, facturat: 800, incasat: 400 },
+      budgetTotal: 0,
+      actualCost: 0,
+      tasks: [
+        {
+          value: 10_000,
+          status: 'in_lucru' as const,
+          deliverables: [{ qtyDone: 0, qtyTotal: 10, weight: 100 }],
+        },
+      ],
+    }
+    const k = jobKpis(j, '2026-01-06') // 50% din interval, 0% realizat
+    expect(k.baselineSlipDays).toBe(10) // finalul s-a mutat cu 10 zile
+    expect(k.scheduleVarianceLei).toBeCloseTo(5000) // jumătate din valoare, restantă
+    expect(k.billing.facturat).toBe(800)
+    expect(k.wip).toBeCloseTo(0) // EV 0 − depus 1000 → clamp la 0
   })
 })

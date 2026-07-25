@@ -24,9 +24,9 @@ import {
   duplicateTask,
   setProjectActive,
   setTaskStatus,
-  updateBilling,
   updateDeliverable,
   updateJob,
+  updateJobBilling,
   updateJobBudget,
   updateProject,
   updateTask,
@@ -34,9 +34,22 @@ import {
   updateTaskInvoiceDate,
 } from '../data/mutations'
 import { useTaskManDays } from '../data/cronologic'
-import { deliverablePct, taskPct } from '../domain/kpi'
-import { dataRo, lei, num, pct, toNum } from '../lib/format'
-import { Card, DangerButton, NeutralPill, ProgressBar, StatusPill } from '../components/ui'
+import {
+  deliverablePct,
+  effortKpis,
+  scheduleColor,
+  taskPct,
+  type BillingInput,
+} from '../domain/kpi'
+import { compact, dataRo, lei, num, pct, toNum, zile } from '../lib/format'
+import {
+  Card,
+  DangerButton,
+  NeutralPill,
+  ProgressBar,
+  StatusPill,
+  scheduleText,
+} from '../components/ui'
 import { InlineEdit } from '../components/InlineEdit'
 import { toast } from '../components/Toast'
 import type { Selection } from '../lib/selection'
@@ -45,39 +58,87 @@ import type { Save } from './Explorer'
 const addInputCls =
   'w-full rounded-lg border border-[#E8E8E8] bg-white px-2 py-1.5 text-sm outline-none focus:border-[#58A834]'
 
-/** Eticheta mică de deasupra unui câmp inline. */
+/**
+ * Eticheta mică de deasupra unui câmp inline. Deliberat NU e uppercase: literele
+ * mari rămân doar pentru capetele de coloană și banda KPI — când totul strigă,
+ * nimic nu se mai aude.
+ */
 function FieldLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="block text-[11px] font-semibold uppercase tracking-wider text-[#5B6673]">
-      {children}
-    </span>
-  )
+  return <span className="block text-xs text-[#5B6673]">{children}</span>
 }
 
 // ── Detaliu · PROIECT ────────────────────────────────────────────────────
 
-/** Fluxul de facturare, cu cele 4 valori editabile inline. */
-function FluxFacturareInline({ p, save }: { p: ProjectWithKpis; save: Save }) {
+/** Etichetele fluxului de facturare — „Situație probată" e primul pas (nu „Executat",
+ *  care se confunda cu „lucrări executate" = EV). */
+const BILLING_STEPS: { key: keyof BillingInput; label: string }[] = [
+  { key: 'depus', label: 'Situație probată' },
+  { key: 'certificat', label: 'Certificat' },
+  { key: 'facturat', label: 'Facturat' },
+  { key: 'incasat', label: 'Încasat' },
+]
+
+/** Fluxul de facturare al PROIECTULUI — doar citire: e suma situațiilor joburilor. */
+function FluxFacturareProiect({ p }: { p: ProjectWithKpis }) {
   const b = p.billing
-  const steps: { key: keyof typeof b; label: string; highlight?: boolean }[] = [
-    { key: 'depus', label: 'Executat' },
-    { key: 'certificat', label: 'Aprobat' },
-    { key: 'facturat', label: 'Facturat' },
-    { key: 'incasat', label: 'Încasat', highlight: true },
-  ]
-  function saveStep(key: keyof typeof b, raw: string) {
+  const facturat = p.jobs.filter((j) => j.kpis.billing.facturat > 0).length
+  return (
+    <Card>
+      <div className="mb-3 flex items-baseline justify-between gap-3">
+        <h3 className="text-base font-semibold">Flux facturare client</h3>
+        <span className="text-xs text-[#5B6673]">
+          totalul situațiilor de lucrări · se editează pe fiecare job
+        </span>
+      </div>
+      <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+        {BILLING_STEPS.map((s, i) => (
+          <div key={s.key} className="flex items-start gap-2">
+            {i > 0 && (
+              <span aria-hidden className="mt-1 hidden text-[#C9C5BC] xl:block">
+                →
+              </span>
+            )}
+            <div>
+              <FieldLabel>{s.label}</FieldLabel>
+              <span className="text-lg font-semibold tracking-tight">{lei(b[s.key])}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+      <p className="mt-4 border-t border-[#E8E8E8] pt-3 text-sm text-[#5B6673]">
+        {p.kpis.wip > 0 ? (
+          <>
+            Construit dar nefacturat (WIP):{' '}
+            <strong className="text-[#0D1A2D]">{lei(Math.round(p.kpis.wip))}</strong>
+            {facturat > 0 ? ` · ${facturat} din ${p.jobs.length} joburi au situații` : ''}
+          </>
+        ) : (
+          'Situațiile se completează pe fiecare job (selectează un job din coloană).'
+        )}
+      </p>
+    </Card>
+  )
+}
+
+/** Situația de lucrări a UNUI job — aici se editează cele 4 valori. */
+function SituatieJob({ job, save }: { job: JobWithKpis; save: Save }) {
+  const b = job.kpis.billing
+  function saveStep(key: keyof BillingInput, raw: string) {
     const v = toNum(raw)
     save(
-      { kind: 'billing', id: p.id, patch: { [key]: v } },
-      { kind: 'billing', id: p.id, patch: { [key]: b[key] } },
-      () => updateBilling(p.id, { ...b, [key]: v })
+      { kind: 'billing', id: job.id, patch: { [key]: v } },
+      { kind: 'billing', id: job.id, patch: { [key]: b[key] } },
+      () => updateJobBilling(job.id, { ...b, [key]: v })
     )
   }
   return (
     <Card>
-      <h3 className="mb-3 text-base font-semibold">Flux facturare client</h3>
+      <div className="mb-3 flex items-baseline justify-between gap-3">
+        <h3 className="text-base font-semibold">Situație de lucrări</h3>
+        <span className="text-xs text-[#5B6673]">click pe sumă ca să o editezi</span>
+      </div>
       <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-        {steps.map((s, i) => (
+        {BILLING_STEPS.map((s, i) => (
           <div key={s.key} className="flex items-start gap-2">
             {i > 0 && (
               <span aria-hidden className="mt-1 hidden text-[#C9C5BC] xl:block">
@@ -89,13 +150,7 @@ function FluxFacturareInline({ p, save }: { p: ProjectWithKpis; save: Save }) {
               <InlineEdit
                 type="number"
                 value={String(b[s.key])}
-                display={
-                  <span
-                    className={`text-lg font-semibold tracking-tight ${s.highlight ? 'text-[#F0A800]' : ''}`}
-                  >
-                    {lei(b[s.key])}
-                  </span>
-                }
+                display={<span className="text-lg font-semibold tracking-tight">{lei(b[s.key])}</span>}
                 onSave={(raw) => saveStep(s.key, raw)}
                 inputClassName="w-28 text-lg font-semibold"
               />
@@ -103,10 +158,11 @@ function FluxFacturareInline({ p, save }: { p: ProjectWithKpis; save: Save }) {
           </div>
         ))}
       </div>
-      {p.kpis.wip > 0 && (
+      {job.kpis.wip > 0 && (
         <p className="mt-4 border-t border-[#E8E8E8] pt-3 text-sm text-[#5B6673]">
-          Construit dar nefacturat (WIP):{' '}
-          <strong className="text-[#0D1A2D]">{lei(Math.round(p.kpis.wip))}</strong>
+          Construit dar neprobat (WIP):{' '}
+          <strong className="text-[#0D1A2D]">{lei(Math.round(job.kpis.wip))}</strong> — lucrări
+          executate care nu au intrat încă într-o situație
         </p>
       )}
     </Card>
@@ -405,7 +461,7 @@ function ProjectDetail({
         )}
       </Card>
 
-      <FluxFacturareInline p={p} save={save} />
+      <FluxFacturareProiect p={p} />
       <CosturiPnl p={p} />
       {/* „Note": ce se întâmplă la ștergere + formulele + regulile de cost */}
       <Note withDeleteInfo />
@@ -466,15 +522,7 @@ function BugetVsCostInline({ job, save }: { job: JobWithKpis; save: Save }) {
   )
 }
 
-function CosturiJob({
-  job,
-  save,
-  onRefetch,
-}: {
-  job: JobWithKpis
-  save: Save
-  onRefetch: () => void
-}) {
+function CosturiJob({ job, save }: { job: JobWithKpis; save: Save }) {
   const [category, setCategory] = useState<CostCategory>('manopera')
   const [amount, setAmount] = useState('')
   const [description, setDescription] = useState('')
@@ -490,10 +538,16 @@ function CosturiJob({
     }
     setBusy(true)
     try {
-      await addCostEntry(job.id, { category, amount: value, description, entryDate })
+      // patch optimist cu rândul întors de DB: nu re-citim tot arborele (care
+      // include tot istoricul de costuri și ar încetini pe măsură ce crește)
+      const row = await addCostEntry(job.id, { category, amount: value, description, entryDate })
+      save(
+        { kind: 'job', id: job.id, patch: { cvr_cost_entries: [...job.cvr_cost_entries, row] } },
+        { kind: 'job', id: job.id, patch: { cvr_cost_entries: job.cvr_cost_entries } },
+        async () => {}
+      )
       setAmount('')
       setDescription('')
-      onRefetch()
     } catch (err) {
       toast(`Costul nu s-a salvat: ${(err as Error).message}`)
     } finally {
@@ -660,12 +714,20 @@ function JobDetail({
             />
           </div>
           <div>
-            <FieldLabel>Progres</FieldLabel>
-            <span className="text-sm font-semibold">{pct(k.donePct)}</span>
+            <FieldLabel>Grafic</FieldLabel>
+            <span
+              className={`text-sm ${
+                scheduleColor(k.behindDays) === 'error' ? 'font-medium text-[#D64545]' : ''
+              }`}
+            >
+              {scheduleText(k.behindDays)}
+            </span>
           </div>
           <div>
-            <FieldLabel>Grafic</FieldLabel>
-            <span className="text-sm">{`plan ${pct(k.planPct, 0)}`}</span>
+            <FieldLabel>Cost</FieldLabel>
+            <span className="text-sm">
+              {compact(k.actualCost)} / {compact(k.budgetTotal)} lei
+            </span>
           </div>
         </div>
 
@@ -673,6 +735,17 @@ function JobDetail({
           <ProgressBar donePct={k.donePct} planPct={k.planPct} className="flex-1" />
           <span className="shrink-0 text-sm font-semibold">{pct(k.donePct)}</span>
         </div>
+
+        {/* alunecarea față de planul INIȚIAL — se vede doar când există */}
+        {k.baselineSlipDays !== null && Math.abs(k.baselineSlipDays) >= 1 && (
+          <p className="text-xs text-[#5B6673]">
+            Față de planul inițial ({dataRo(job.baseline_end_date!)}):{' '}
+            <strong className={k.baselineSlipDays > 0 ? 'text-[#D64545]' : 'text-[#46862A]'}>
+              {k.baselineSlipDays > 0 ? '+' : '−'}
+              {zile(Math.abs(k.baselineSlipDays))}
+            </strong>
+          </p>
+        )}
 
         <div className="flex flex-wrap items-center gap-2 border-t border-[#E8E8E8] pt-3">
           <button
@@ -724,8 +797,9 @@ function JobDetail({
         </div>
       </Card>
 
+      <SituatieJob job={job} save={save} />
       <BugetVsCostInline job={job} save={save} />
-      <CosturiJob job={job} save={save} onRefetch={onRefetch} />
+      <CosturiJob job={job} save={save} />
     </div>
   )
 }
@@ -772,9 +846,9 @@ function TaskDetail({
       : task.planned_man_days == null
         ? null
         : Number(task.planned_man_days)
-  const effortPct = plannedMd && plannedMd > 0 ? consumedMd / plannedMd : null
-  const targetLine = effortPct === null ? null : Math.min(effortPct, 1)
-  const effortBehind = effortPct !== null && effortPct > pctDone + 0.02
+  // efortul în oameni-zile: câștigat (plan × progres fizic) vs consumat
+  const effort = plannedMd && plannedMd > 0 ? effortKpis(plannedMd, consumedMd, pctDone) : null
+  const targetLine = effort === null ? null : Math.min(effort.consumedPct, 1)
 
   function persistTask(over: Partial<{ name: string; value: number }>) {
     return updateTask(task.id, { name: task.name, value: Number(task.value), ...over })
@@ -964,13 +1038,10 @@ function TaskDetail({
             />
           </div>
           <div>
-            <FieldLabel>Realizat</FieldLabel>
-            <span className="text-sm font-semibold">{pct(pctDone)}</span>
-          </div>
-          <div>
-            <FieldLabel>Pondere totală</FieldLabel>
-            <span className={`text-sm font-semibold ${Math.round(weightSum) === 100 ? '' : 'text-[#D64545]'}`}>
-              {num(weightSum)}%
+            {/* banul, nu doar procentul — moneda în care gândește restul aplicației */}
+            <FieldLabel>Executat</FieldLabel>
+            <span className="text-sm font-semibold">
+              {lei(Math.round(Number(task.value) * pctDone))}
             </span>
           </div>
         </div>
@@ -1048,7 +1119,7 @@ function TaskDetail({
         )}
 
         {/* capul de tabel */}
-        <div className="grid grid-cols-[minmax(100px,1fr)_44px_128px_56px_56px_80px_28px] items-center gap-2 px-1 pt-1 text-[11px] font-semibold uppercase tracking-wider text-[#5B6673]">
+        <div className="grid grid-cols-[minmax(100px,1fr)_44px_128px_56px_56px_80px_28px] items-center gap-2 px-1 pt-1 text-xs text-[#5B6673]">
           <span>Livrabil</span>
           <span>UM</span>
           <span>Realizat / Total</span>
@@ -1197,21 +1268,56 @@ function TaskDetail({
         </p>
       </Card>
 
-      {/* Ținta de efort (oameni-zile) */}
-      {plannedMd !== null && plannedMd > 0 && (
-        <Card className="!bg-[#FAF9F6]">
-          <div className="flex items-baseline justify-between text-sm">
-            <span className="text-[#5B6673]">
-              Efort: <strong className="text-[#0D1A2D]">{num(consumedMd)}</strong> din{' '}
-              {num(plannedMd)} oameni-zile
-            </span>
-            <span className={`font-medium ${effortBehind ? 'text-[#D64545]' : 'text-[#46862A]'}`}>
-              {effortBehind ? 'sub randament' : 'în ritm'}
+      {/* Efortul, în oameni-zile — două bare separate, verdictul în oameni-zile:
+          „ai câștigat X oameni-zile de plan, ai cheltuit Y" (nu procente amestecate) */}
+      {effort !== null && (
+        <Card className="space-y-3 !bg-[#FAF9F6]">
+          <div className="flex items-baseline justify-between gap-3">
+            <h3 className="text-sm font-semibold">Efort (oameni-zile)</h3>
+            <span
+              className={`text-sm font-medium ${
+                effort.variance < 0 ? 'text-[#D64545]' : 'text-[#46862A]'
+              }`}
+            >
+              {effort.variance >= 0
+                ? `economie ${num(Math.abs(effort.variance), 1)} oameni-zile`
+                : `depășire ${num(Math.abs(effort.variance), 1)} oameni-zile`}
             </span>
           </div>
-          <ProgressBar donePct={pctDone} planPct={Math.min(effortPct ?? 0, 1)} className="mt-2" />
-          <p className="mt-1 text-xs text-[#5B6673]">
-            bara = progres fizic · liniuța = efort consumat ({pct(effortPct ?? 0, 0)})
+
+          <div className="space-y-1.5">
+            <div className="flex items-baseline justify-between text-xs text-[#5B6673]">
+              <span>Progres fizic</span>
+              <span className="tabular-nums">
+                {pct(pctDone)} · {num(effort.earned, 1)} din {num(effort.planned)} oameni-zile
+                câștigate
+              </span>
+            </div>
+            <ProgressBar donePct={pctDone} className="!h-2" />
+          </div>
+
+          <div className="space-y-1.5">
+            <div className="flex items-baseline justify-between text-xs text-[#5B6673]">
+              <span>Efort folosit din plan</span>
+              <span className="tabular-nums">
+                {pct(effort.consumedPct)} · {num(effort.consumed)} din {num(effort.planned)}{' '}
+                oameni-zile
+              </span>
+            </div>
+            <div className="relative h-2 overflow-hidden rounded-full bg-[#EEECE7]">
+              <div
+                className={`h-2 rounded-full ${
+                  effort.variance < 0 ? 'bg-[#D64545]' : 'bg-[#8798AC]'
+                }`}
+                style={{ width: `${Math.min(effort.consumedPct, 1) * 100}%` }}
+              />
+            </div>
+          </div>
+
+          <p className="text-xs text-[#5B6673]">
+            {effort.variance >= 0
+              ? 'Munca făcută a „câștigat" mai multe oameni-zile decât ai cheltuit — echipa produce în ritmul planificat sau mai bine.'
+              : 'Ai cheltuit mai multe oameni-zile decât a „câștigat" munca făcută — la ritmul ăsta, taskul depășește planul de manoperă.'}
           </p>
         </Card>
       )}

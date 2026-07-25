@@ -129,7 +129,7 @@ function Row({
         }}
         className={`cursor-pointer rounded-xl bg-white px-3 py-2 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-[#58A834] ${
           selected
-            ? 'shadow-[0_1px_2px_rgba(13,26,45,0.06),0_6px_16px_rgba(13,26,45,0.10)] ring-1 ring-[#58A834]'
+            ? 'shadow-[0_1px_2px_rgba(13,26,45,0.06),0_6px_16px_rgba(13,26,45,0.10)] ring-1 ring-[#14263F]'
             : 'shadow-[0_1px_2px_rgba(13,26,45,0.04)] hover:shadow-[0_2px_8px_rgba(13,26,45,0.09)]'
         } ${dimmed ? 'opacity-70' : ''}`}
       >
@@ -155,8 +155,30 @@ const addInputCls =
   'w-full rounded-lg border border-[#E8E8E8] bg-white px-2 py-1.5 text-sm outline-none focus:border-[#58A834]'
 
 // ── Coloana 1 · Proiecte ─────────────────────────────────────────────────
-function ProjectRow({ p, selected, showValue }: { p: ProjectWithKpis; selected: boolean; showValue?: boolean }) {
+
+/**
+ * O linie de context, gri, în locul teancului de pastile colorate. Roșul apare
+ * DOAR pe fragmentul care chiar e problemă (peste 7 zile întârziere) — restul
+ * rămâne text normal, ca ochiul să nu mai fie chemat de fiecare card.
+ */
+function MetaLine({ parts }: { parts: { text: string; alert?: boolean }[] }) {
+  const shown = parts.filter((x) => x.text)
+  if (shown.length === 0) return null
+  return (
+    <p className="mt-1 truncate text-xs text-[#5B6673]">
+      {shown.map((x, i) => (
+        <span key={i}>
+          {i > 0 && <span className="text-[#C9C5BC]"> · </span>}
+          <span className={x.alert ? 'font-medium text-[#D64545]' : ''}>{x.text}</span>
+        </span>
+      ))}
+    </p>
+  )
+}
+
+function ProjectRow({ p, selected }: { p: ProjectWithKpis; selected: boolean }) {
   const k = p.kpis
+  const late = k.behindDays >= 2
   return (
     <>
       <div className="flex items-baseline justify-between gap-2">
@@ -165,18 +187,17 @@ function ProjectRow({ p, selected, showValue }: { p: ProjectWithKpis; selected: 
         </span>
         <span className="shrink-0 text-xs font-semibold tabular-nums">{pct(k.donePct, 0)}</span>
       </div>
-      {showValue !== false && (
-        <p className="mt-0.5 truncate text-xs text-[#5B6673]">
-          {p.client ? `${p.client} · ` : ''}
-          {compact(Number(p.contract_value))} lei
-        </p>
-      )}
       <ProgressBar donePct={k.donePct} planPct={k.planPct} className="mt-1.5 !h-1.5" />
-      {k.behindDays >= 2 && (
-        <div className="mt-1.5">
-          <KpiPill color={scheduleColor(k.behindDays)}>{scheduleText(k.behindDays)}</KpiPill>
-        </div>
-      )}
+      <MetaLine
+        parts={[
+          { text: p.client ?? '' },
+          { text: `${compact(Number(p.contract_value))} lei` },
+          {
+            text: late ? scheduleText(k.behindDays) : '',
+            alert: scheduleColor(k.behindDays) === 'error',
+          },
+        ]}
+      />
     </>
   )
 }
@@ -322,7 +343,7 @@ function SecondaryProjects({
       key={p.id}
       onClick={() => onSelect(p.id)}
       className={`flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-left shadow-[0_1px_2px_rgba(13,26,45,0.04)] transition-shadow hover:shadow-[0_2px_8px_rgba(13,26,45,0.09)] ${
-        sel.projectId === p.id ? 'ring-1 ring-[#58A834]' : ''
+        sel.projectId === p.id ? 'ring-1 ring-[#14263F]' : ''
       } ${dim ? 'opacity-70' : ''}`}
     >
       <span className="text-sm font-medium">{p.name}</span>
@@ -458,23 +479,27 @@ function JobsColumn({
                   {pct(k.donePct, 0)}
                 </span>
               </div>
-              <p className="mt-0.5 text-xs text-[#5B6673]">
+              <p className="mt-0.5 truncate text-xs text-[#5B6673]">
                 {dataRo(j.start_date)} – {dataRo(j.end_date)} · {compact(k.value)} lei
               </p>
               <ProgressBar donePct={k.donePct} planPct={k.planPct} className="mt-1.5 !h-1.5" />
-              <div className="mt-1.5 flex flex-wrap gap-1">
-                {k.behindDays >= 2 && (
-                  <KpiPill color={scheduleColor(k.behindDays)}>
-                    {scheduleText(k.behindDays)}
-                  </KpiPill>
-                )}
-                {k.costVariance < 0 && (
-                  <KpiPill color="error">{compact(-k.costVariance)} peste buget</KpiPill>
-                )}
-                {inLucru > 0 && (
-                  <span className="text-[11px] text-[#5B6673]">{inLucru} în lucru</span>
-                )}
-              </div>
+              {/* o singură linie de context; roșu doar peste pragul de eroare, și
+                  doar pentru UN lucru — graficul bate bugetul, e ce urmărești zilnic */}
+              <MetaLine
+                parts={[
+                  {
+                    text: k.behindDays >= 2 ? scheduleText(k.behindDays) : '',
+                    alert: scheduleColor(k.behindDays) === 'error',
+                  },
+                  {
+                    text:
+                      k.behindDays < 2 && k.costVariance < 0
+                        ? `${compact(-k.costVariance)} peste buget`
+                        : '',
+                  },
+                  { text: inLucru > 0 ? `${inLucru} în lucru` : '' },
+                ]}
+              />
             </Row>
           )
         })}
@@ -731,7 +756,7 @@ function Breadcrumb({
       <button
         onClick={() => onGo(target)}
         className={`max-w-[280px] truncate ${
-          last ? 'font-semibold text-[#0D1A2D]' : 'text-[#115468] hover:underline'
+          last ? 'font-semibold text-[#0D1A2D]' : 'text-[#5B6673] hover:text-[#0D1A2D] hover:underline'
         }`}
       >
         {label}
