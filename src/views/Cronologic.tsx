@@ -7,6 +7,7 @@ import type { JobWithKpis } from '../data/projects'
 import { useMonthData } from '../data/cronologic'
 import { num, pct } from '../lib/format'
 import { BackLink, Card } from '../components/ui'
+import { SERIF } from '../components/Shell'
 
 const MONTHS_RO = [
   'ianuarie', 'februarie', 'martie', 'aprilie', 'mai', 'iunie',
@@ -119,14 +120,16 @@ export function CronologicView({
   const totalMuted = 'px-1 text-center text-xs tabular-nums text-[#5B6673]'
 
   return (
-    <div className="w-full space-y-4 px-6 py-6">
+    <div className="w-full space-y-4 px-8 py-6">
       <BackLink label={job.name} onClick={onBack} />
 
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Vedere cronologică · {job.name}</h1>
-          <p className="mt-0.5 text-sm text-[#5B6673]">
-            Cantități raportate pe zile · oamenii vin din Pontaj
+          <h1 className="text-3xl leading-none tracking-tight" style={{ fontFamily: SERIF }}>
+            Vedere cronologică
+          </h1>
+          <p className="mt-1.5 text-sm text-[#5B6673]">
+            {job.name} · cantități raportate pe zile · oamenii vin din Pontaj
           </p>
         </div>
         <div className="flex items-center gap-4">

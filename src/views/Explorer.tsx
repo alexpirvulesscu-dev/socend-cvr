@@ -6,10 +6,12 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { JobWithKpis, ProjectWithKpis, TaskRow } from '../data/projects'
 import type { EntityPatch } from '../data/projects'
+import { todayIso } from '../data/projects'
 import { addJob, addTask, setJobsOrder, setProjectsOrder, setTasksOrder } from '../data/mutations'
 import { taskPct } from '../domain/kpi'
 import { compact, dataRo, pct, toNum } from '../lib/format'
-import { KpiPill, NeutralPill, ProgressBar, StatusPill, scheduleText } from '../components/ui'
+import { Card, KpiPill, NeutralPill, ProgressBar, StatusPill, scheduleText } from '../components/ui'
+import { PageHeader, PrimaryButton, lunaCurenta } from '../components/Shell'
 import { toast } from '../components/Toast'
 import type { Selection } from '../lib/selection'
 import { KpiBand } from './ExplorerKpis'
@@ -60,14 +62,17 @@ function useDragOrder(ids: string[], onCommit: (next: string[]) => void) {
 /** Linia verde de inserție (identică vizual cu cea din v2). */
 function InsertLine() {
   return (
-    <div className="pointer-events-none absolute -top-1.5 left-0 right-0 z-10 flex items-center gap-1.5">
+    <div className="pointer-events-none absolute -top-[2px] left-0 right-0 z-10 flex items-center gap-1.5">
       <span className="h-2 w-2 rounded-full bg-[#58A834]" />
-      <span className="h-1 flex-1 rounded-full bg-[#58A834]" />
+      <span className="h-[3px] flex-1 rounded-full bg-[#58A834]" />
     </div>
   )
 }
 
 // ── Coloana generică ─────────────────────────────────────────────────────
+// Fiecare coloană e un card alb cu contur de un fir, cu antet propriu — ca
+// tabelele din referință. Rândurile se despart prin linii subțiri, nu prin
+// cartonașe care plutesc unul lângă altul.
 function Column({
   title,
   action,
@@ -83,22 +88,20 @@ function Column({
 }) {
   return (
     <div className={`min-h-0 ${width} shrink-0 flex-col ${className || 'flex'}`}>
-      <div className="mb-2 flex h-8 items-center justify-between px-1">
-        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-[#5B6673]">
-          {title}
-        </h2>
-        {action}
-      </div>
-      {/* panoul cald al coloanei — cardurile albe din interior „ies" din el,
-          așa fiecare proiect/job/task se citește ca bloc propriu */}
-      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto rounded-2xl bg-[#F1EEE9] p-2">
-        {children}
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[#E8E8E8] bg-white shadow-[0_1px_2px_rgba(13,26,45,0.03)]">
+        <div className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-[#F0EFEC] px-3.5">
+          <h2 className="text-[11px] font-semibold uppercase tracking-wider text-[#5B6673]">
+            {title}
+          </h2>
+          {action}
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
       </div>
     </div>
   )
 }
 
-/** Rând de coloană: alb+umbră când e selectat, hover discret altfel. */
+/** Rând de coloană: linie de tabel; selecția = tentă verde + reper în margine. */
 function Row({
   selected,
   onClick,
@@ -127,24 +130,23 @@ function Row({
             onClick()
           }
         }}
-        className={`cursor-pointer rounded-xl bg-white px-3 py-2 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-[#58A834] ${
-          selected
-            ? 'shadow-[0_1px_2px_rgba(13,26,45,0.06),0_6px_16px_rgba(13,26,45,0.10)] ring-1 ring-[#14263F]'
-            : 'shadow-[0_1px_2px_rgba(13,26,45,0.04)] hover:shadow-[0_2px_8px_rgba(13,26,45,0.09)]'
+        className={`relative cursor-pointer border-b border-[#F0EFEC] px-3.5 py-2.5 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#58A834] ${
+          selected ? 'bg-[#F2F7F0]' : 'hover:bg-[#FAF9F6]'
         } ${dimmed ? 'opacity-70' : ''}`}
       >
+        {selected && <span aria-hidden className="absolute inset-y-0 left-0 w-[3px] bg-[#58A834]" />}
         {children}
       </div>
     </div>
   )
 }
 
-/** Butonul rotund verde „+ Adaugă" al coloanelor. */
+/** Acțiunea discretă din antetul coloanei („+ Job", „+ Task"). */
 function AddButton({ label, onClick }: { label: string; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className="rounded-full bg-[#DDEDDC] px-3 py-1 text-xs font-medium text-[#46862A] hover:bg-[#CBE3C9]"
+      className="rounded-lg px-2 py-1 text-xs font-semibold text-[#2C6E36] transition-colors hover:bg-[#EDF5EC]"
     >
       {label}
     </button>
@@ -215,7 +217,7 @@ function SmallAggregate({ projects }: { projects: ProjectWithKpis[] }) {
   const result = ev - cost
   const margin = ev > 0 ? result / ev : 0
   return (
-    <div className="rounded-2xl bg-white px-4 py-3 shadow-[0_1px_2px_rgba(13,26,45,0.04)]">
+    <Card className="!px-4 !py-3">
       <div className="flex items-baseline justify-between text-sm">
         <span className="text-[#5B6673]">
           {projects.length === 1 ? 'un proiect mic' : `${projects.length} proiecte mici`} ·{' '}
@@ -231,7 +233,7 @@ function SmallAggregate({ projects }: { projects: ProjectWithKpis[] }) {
         <NeutralPill>Marjă {pct(margin)}</NeutralPill>
         <NeutralPill>cost {compact(cost)} lei</NeutralPill>
       </div>
-    </div>
+    </Card>
   )
 }
 
@@ -239,14 +241,12 @@ function ProjectsColumn({
   projects,
   sel,
   onSelect,
-  onNew,
   patchEntity,
   className,
 }: {
   projects: ProjectWithKpis[]
   sel: Selection
   onSelect: (projectId: string | undefined) => void
-  onNew: () => void
   patchEntity: (p: EntityPatch) => void
   className?: string
 }) {
@@ -270,12 +270,7 @@ function ProjectsColumn({
   const ordered = dnd.order.map((id) => byId.get(id)).filter(Boolean) as ProjectWithKpis[]
 
   return (
-    <Column
-      title={`Proiecte (${mainActive.length})`}
-      width="w-[270px]"
-      className={className}
-      action={<AddButton label="+ Proiect" onClick={onNew} />}
-    >
+    <Column title={`Proiecte (${mainActive.length})`} width="w-[250px]" className={className}>
       <div onDragOver={(e) => e.preventDefault()} onDrop={dnd.drop}>
         {ordered.map((p) => (
           <Row
@@ -291,7 +286,7 @@ function ProjectsColumn({
                 if (dnd.dragId && dnd.dragId !== p.id) dnd.setOverId(p.id)
               },
               onDragEnd: dnd.drop,
-              className: `relative pb-1 ${dnd.dragId === p.id ? 'opacity-40' : ''}`,
+              className: `relative ${dnd.dragId === p.id ? 'opacity-40' : ''}`,
             }}
           >
             <ProjectRow p={p} selected={sel.projectId === p.id} />
@@ -312,7 +307,7 @@ function ProjectsColumn({
 
       {mainActive.length === 0 && (
         <p className="px-3 py-6 text-center text-xs text-[#5B6673]">
-          Niciun proiect activ. Apasă „+ Proiect".
+          Niciun proiect activ. Apasă „Proiect nou", sus în dreapta.
         </p>
       )}
     </Column>
@@ -342,8 +337,8 @@ function SecondaryProjects({
     <button
       key={p.id}
       onClick={() => onSelect(p.id)}
-      className={`flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-left shadow-[0_1px_2px_rgba(13,26,45,0.04)] transition-shadow hover:shadow-[0_2px_8px_rgba(13,26,45,0.09)] ${
-        sel.projectId === p.id ? 'ring-1 ring-[#14263F]' : ''
+      className={`flex items-center gap-2 rounded-xl border bg-white px-3 py-2 text-left transition-colors hover:border-[#C9C5BC] ${
+        sel.projectId === p.id ? 'border-[#58A834]' : 'border-[#E8E8E8]'
       } ${dim ? 'opacity-70' : ''}`}
     >
       <span className="text-sm font-medium">{p.name}</span>
@@ -445,7 +440,7 @@ function JobsColumn({
   return (
     <Column
       title={`Joburi (${project.jobs.length})`}
-      width="w-[270px]"
+      width="w-[250px]"
       action={<AddButton label="+ Job" onClick={() => setAdding((a) => !a)} />}
     >
       <div onDragOver={(e) => e.preventDefault()} onDrop={dnd.drop}>
@@ -466,7 +461,7 @@ function JobsColumn({
                   if (dnd.dragId && dnd.dragId !== j.id) dnd.setOverId(j.id)
                 },
                 onDragEnd: dnd.drop,
-                className: `relative pb-1 ${dnd.dragId === j.id ? 'opacity-40' : ''}`,
+                className: `relative ${dnd.dragId === j.id ? 'opacity-40' : ''}`,
               }}
             >
               <div className="flex items-baseline justify-between gap-2">
@@ -523,7 +518,7 @@ function JobsColumn({
       )}
 
       {adding && (
-        <div className="space-y-2 rounded-xl bg-white p-3 shadow-[0_1px_2px_rgba(13,26,45,0.05)]">
+        <div className="space-y-2 border-b border-[#F0EFEC] bg-[#FAF9F6] p-3">
           <input
             autoFocus
             className={addInputCls}
@@ -627,7 +622,7 @@ function TasksColumn({
   return (
     <Column
       title={`Taskuri (${job.tasks.length})`}
-      width="w-[290px]"
+      width="w-[276px]"
       action={<AddButton label="+ Task" onClick={() => setAdding((a) => !a)} />}
     >
       <div onDragOver={(e) => e.preventDefault()} onDrop={dnd.drop}>
@@ -653,7 +648,7 @@ function TasksColumn({
                   if (dnd.dragId && dnd.dragId !== t.id) dnd.setOverId(t.id)
                 },
                 onDragEnd: dnd.drop,
-                className: `relative pb-1 ${dnd.dragId === t.id ? 'opacity-40' : ''}`,
+                className: `relative ${dnd.dragId === t.id ? 'opacity-40' : ''}`,
               }}
             >
               <div className="flex items-baseline justify-between gap-2">
@@ -695,7 +690,7 @@ function TasksColumn({
       )}
 
       {adding && (
-        <div className="space-y-2 rounded-xl bg-white p-3 shadow-[0_1px_2px_rgba(13,26,45,0.05)]">
+        <div className="space-y-2 border-b border-[#F0EFEC] bg-[#FAF9F6] p-3">
           <input
             autoFocus
             className={addInputCls}
@@ -816,82 +811,94 @@ export function ExplorerView({
   }, [sel, onSelect])
 
   return (
-    <div className="mx-auto max-w-[1800px] space-y-4 px-6 py-5">
-      <KpiBand projects={projects} selected={project} />
+    <div className="mx-auto max-w-[1800px] px-8 py-6">
+      <PageHeader
+        title="Proiecte"
+        pill={lunaCurenta(todayIso())}
+        action={<PrimaryButton onClick={onNewProject}>Proiect nou</PrimaryButton>}
+      />
 
-      <Breadcrumb project={project} job={job} task={task} onGo={onSelect} />
+      <div className="space-y-4">
+        <KpiBand projects={projects} selected={project} />
 
-      {/* Coloanele: apar pe măsură ce cobori; Detaliu ocupă restul.
-          Sub 2xl, când un task e selectat, coloana Proiecte se pliază într-o
-          fâșie îngustă — spațiul îi trebuie panoului de livrabile. */}
-      <div
-        className="flex min-h-0 items-stretch gap-3"
-        style={{ height: 'clamp(440px, calc(100vh - 300px), 760px)' }}
-      >
-        <ProjectsColumn
+        {/* firul Ariadnei apare doar când ai coborât în arbore — fără proiect
+            selectat ar repeta titlul paginii */}
+        {project && <Breadcrumb project={project} job={job} task={task} onGo={onSelect} />}
+
+        {/* Coloanele: apar pe măsură ce cobori; Detaliu ocupă restul.
+            Sub 2xl, când un task e selectat, coloana Proiecte se pliază într-o
+            fâșie îngustă — spațiul îi trebuie panoului de livrabile. */}
+        <div
+          className="flex min-h-0 items-stretch gap-3"
+          style={{ height: 'clamp(440px, calc(100vh - 320px), 760px)' }}
+        >
+          {/* de la jobul selectat în jos, pe ecrane sub 2xl coloana Proiecte se
+              pliază într-o fâșie: spațiul îi trebuie panoului de detaliu, care
+              altfel s-ar strânge sub lățimea lui minimă */}
+          <ProjectsColumn
+            projects={projects}
+            sel={sel}
+            onSelect={(projectId) => onSelect(projectId ? { projectId } : {})}
+            patchEntity={patchEntity}
+            className={job ? 'hidden 2xl:flex' : 'flex'}
+          />
+          {job && (
+            <button
+              onClick={() => onSelect({ projectId: sel.projectId })}
+              title="Înapoi la proiecte (Escape)"
+              className="flex w-9 shrink-0 flex-col items-center gap-2 rounded-2xl border border-[#E8E8E8] bg-white py-3 text-[#5B6673] transition-colors hover:text-[#0D1A2D] 2xl:hidden"
+            >
+              <span aria-hidden>‹</span>
+              <span className="text-[10px] font-semibold uppercase tracking-wider [writing-mode:vertical-rl]">
+                Proiecte
+              </span>
+            </button>
+          )}
+          {project && (
+            <JobsColumn
+              project={project}
+              sel={sel}
+              onSelect={(jobId) =>
+                onSelect(jobId ? { projectId: project.id, jobId } : { projectId: project.id })
+              }
+              onRefetch={onRefetch}
+              patchEntity={patchEntity}
+            />
+          )}
+          {project && job && (
+            <TasksColumn
+              job={job}
+              sel={sel}
+              onSelect={(taskId) =>
+                onSelect(
+                  taskId
+                    ? { projectId: project.id, jobId: job.id, taskId }
+                    : { projectId: project.id, jobId: job.id }
+                )
+              }
+              onRefetch={onRefetch}
+              patchEntity={patchEntity}
+            />
+          )}
+          <DetailPanel
+            projects={projects}
+            project={project}
+            job={job}
+            task={task}
+            save={save}
+            onRefetch={onRefetch}
+            onSelect={onSelect}
+            onOpenCronologic={onOpenCronologic}
+          />
+        </div>
+
+        {/* Proiectele mici + finalizate — le folosim rar, deci stau jos, separat. */}
+        <SecondaryProjects
           projects={projects}
           sel={sel}
-          onSelect={(projectId) => onSelect(projectId ? { projectId } : {})}
-          onNew={onNewProject}
-          patchEntity={patchEntity}
-          className={task ? 'hidden 2xl:flex' : 'flex'}
-        />
-        {task && (
-          <button
-            onClick={() => onSelect({ projectId: sel.projectId, jobId: sel.jobId })}
-            title="Arată coloana Proiecte (Escape)"
-            className="flex w-9 shrink-0 flex-col items-center gap-2 rounded-2xl bg-white/60 py-3 text-[#5B6673] shadow-[0_1px_2px_rgba(13,26,45,0.03)] hover:bg-white 2xl:hidden"
-          >
-            <span aria-hidden>‹</span>
-            <span className="text-[10px] font-semibold uppercase tracking-wider [writing-mode:vertical-rl]">
-              Proiecte
-            </span>
-          </button>
-        )}
-        {project && (
-          <JobsColumn
-            project={project}
-            sel={sel}
-            onSelect={(jobId) =>
-              onSelect(jobId ? { projectId: project.id, jobId } : { projectId: project.id })
-            }
-            onRefetch={onRefetch}
-            patchEntity={patchEntity}
-          />
-        )}
-        {project && job && (
-          <TasksColumn
-            job={job}
-            sel={sel}
-            onSelect={(taskId) =>
-              onSelect(
-                taskId
-                  ? { projectId: project.id, jobId: job.id, taskId }
-                  : { projectId: project.id, jobId: job.id }
-              )
-            }
-            onRefetch={onRefetch}
-            patchEntity={patchEntity}
-          />
-        )}
-        <DetailPanel
-          projects={projects}
-          project={project}
-          job={job}
-          task={task}
-          save={save}
-          onRefetch={onRefetch}
-          onSelect={onSelect}
-          onOpenCronologic={onOpenCronologic}
+          onSelect={(projectId) => onSelect({ projectId })}
         />
       </div>
-
-      {/* Proiectele mici + finalizate — le folosim rar, deci stau jos, separat. */}
-      <SecondaryProjects
-        projects={projects}
-        sel={sel}
-        onSelect={(projectId) => onSelect({ projectId })}
-      />
     </div>
   )
 }

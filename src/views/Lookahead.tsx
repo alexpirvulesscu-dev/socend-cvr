@@ -8,7 +8,8 @@ import { todayIso } from '../data/projects'
 import { deliverablePct, taskPct } from '../domain/kpi'
 import { addDays } from '../components/gantt/ganttScale'
 import { compact, dataRo, num, pct } from '../lib/format'
-import { Card, ProgressBar, StatusPill } from '../components/ui'
+import { Card, ProgressBar, StatCard, StatusPill } from '../components/ui'
+import { PageHeader } from '../components/Shell'
 import type { Selection } from '../lib/selection'
 
 interface Item {
@@ -97,58 +98,50 @@ export function LookaheadView({
   const valueToInvoice = toInvoice.reduce((s, i) => s + i.value, 0)
 
   return (
-    <div className="mx-auto max-w-[1800px] space-y-4 px-6 py-5">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">Ce urmează</h1>
-          <p className="mt-0.5 text-sm text-[#5B6673]">
-            Taskurile active în următoarele două săptămâni ({dataRo(today)} – {dataRo(horizon)}) și
-            ce a mai rămas de făcut la fiecare.
-          </p>
-        </div>
-        <label className="flex cursor-pointer items-center gap-2 text-sm text-[#5B6673]">
-          <input
-            type="checkbox"
-            checked={onlyUnfinished}
-            onChange={(e) => setOnlyUnfinished(e.target.checked)}
-            className="h-4 w-4 accent-[#58A834]"
-          />
-          Doar ce nu e terminat
-        </label>
-      </div>
+    <div className="mx-auto max-w-[1800px] px-8 py-6">
+      <PageHeader
+        title="Ce urmează"
+        pill={`${dataRo(today)} – ${dataRo(horizon)}`}
+        action={
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-[#5B6673]">
+            <input
+              type="checkbox"
+              checked={onlyUnfinished}
+              onChange={(e) => setOnlyUnfinished(e.target.checked)}
+              className="h-4 w-4 accent-[#58A834]"
+            />
+            Doar ce nu e terminat
+          </label>
+        }
+      />
 
+      <div className="space-y-4">
       {/* rezumatul ferestrei */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Card className="!p-4">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-[#5B6673]">
-            În lucru
-          </p>
-          <p className="mt-1 text-xl font-semibold">{items.length}</p>
-          <p className="text-[11px] text-[#5B6673]">taskuri ating fereastra</p>
-        </Card>
-        <Card className="!p-4">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-[#5B6673]">Încep</p>
-          <p className="mt-1 text-xl font-semibold">{starting}</p>
-          <p className="text-[11px] text-[#5B6673]">pornesc în aceste 2 săptămâni</p>
-        </Card>
-        <Card className="!p-4">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-[#5B6673]">
-            Trebuie terminate
-          </p>
-          <p className="mt-1 text-xl font-semibold">{ending}</p>
-          <p className="text-[11px] text-[#5B6673]">au termenul în fereastră</p>
-        </Card>
-        <Card className="!p-4">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-[#5B6673]">
-            De facturat
-          </p>
-          <p className="mt-1 text-xl font-semibold">{compact(valueToInvoice)} lei</p>
-          <p className="text-[11px] text-[#5B6673]">
-            {toInvoice.length === 0
+        <StatCard
+          label="În lucru"
+          value={String(items.length)}
+          footnote="taskuri ating fereastra"
+        />
+        <StatCard
+          label="Încep"
+          value={String(starting)}
+          footnote="pornesc în aceste 2 săptămâni"
+        />
+        <StatCard
+          label="Trebuie terminate"
+          value={String(ending)}
+          footnote="au termenul în fereastră"
+        />
+        <StatCard
+          label="De facturat"
+          value={`${compact(valueToInvoice)} lei`}
+          footnote={
+            toInvoice.length === 0
               ? 'nicio țintă de facturare'
-              : `${toInvoice.length} taskuri cu țintă în fereastră`}
-          </p>
-        </Card>
+              : `${toInvoice.length} ${toInvoice.length === 1 ? 'task' : 'taskuri'} cu țintă în fereastră`
+          }
+        />
       </div>
 
       {items.length === 0 ? (
@@ -159,54 +152,69 @@ export function LookaheadView({
           </p>
         </Card>
       ) : (
-        <div className="space-y-2">
+        /* un singur tabel, ca registrul din referință: rânduri despărțite de
+           linii subțiri, coloane aliniate — nu un teanc de cartonașe */
+        <Card className="!p-0">
+          <div className="flex items-center gap-4 border-b border-[#F0EFEC] px-5 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-[#5B6673]">
+            <span className="min-w-0 flex-1">Task</span>
+            <span className="hidden w-[190px] shrink-0 lg:block">Perioadă</span>
+            <span className="w-[132px] shrink-0">Progres</span>
+            <span className="w-[80px] shrink-0 text-right">Valoare</span>
+            <span className="w-[104px] shrink-0 text-right">Status</span>
+          </div>
           {items.map((i) => (
-            <Card
+            <div
               key={i.taskId}
-              className="!p-4 transition-shadow hover:shadow-[0_2px_8px_rgba(13,26,45,0.09)]"
+              role="button"
+              tabIndex={0}
               onClick={() => onOpen({ projectId: i.projectId, jobId: i.jobId, taskId: i.taskId })}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  onOpen({ projectId: i.projectId, jobId: i.jobId, taskId: i.taskId })
+                }
+              }}
+              className="flex cursor-pointer items-center gap-4 border-b border-[#F0EFEC] px-5 py-3 transition-colors last:border-0 hover:bg-[#FAF9F6] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#58A834]"
             >
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold">{i.taskName}</p>
-                  <p className="truncate text-xs text-[#5B6673]">
-                    {i.projectName} · {i.jobName}
-                  </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <StatusPill status={i.status} />
-                  <span className="text-xs text-[#5B6673]">{compact(i.value)} lei</span>
-                </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">{i.taskName}</p>
+                <p className="truncate text-xs text-[#5B6673]">
+                  {i.projectName} · {i.jobName}
+                  {i.remaining.length > 0 && (
+                    <span className="text-[#C9C5BC]"> · mai sunt {i.remaining.join(' · ')}</span>
+                  )}
+                </p>
               </div>
 
-              <div className="mt-2 flex items-center gap-3">
+              <div className="hidden w-[190px] shrink-0 text-xs text-[#5B6673] lg:block">
+                {dataRo(i.start)} – {dataRo(i.end)}
+                {i.startsSoon && <span className="block text-[#0D1A2D]">începe acum</span>}
+                {i.endsSoon && !i.startsSoon && (
+                  <span className="block font-medium text-[#0D1A2D]">termen în fereastră</span>
+                )}
+                {i.invoiceDate && (
+                  <span className="block">facturare țintă {dataRo(i.invoiceDate)}</span>
+                )}
+              </div>
+
+              <div className="flex w-[132px] shrink-0 items-center gap-2">
                 <ProgressBar donePct={i.donePct} className="!h-1.5 flex-1" />
-                <span className="w-10 shrink-0 text-right text-xs font-semibold tabular-nums">
+                <span className="w-9 shrink-0 text-right text-xs font-semibold tabular-nums">
                   {pct(i.donePct, 0)}
                 </span>
               </div>
 
-              <p className="mt-1.5 text-xs text-[#5B6673]">
-                {dataRo(i.start)} – {dataRo(i.end)}
-                {i.startsSoon && <span className="text-[#0D1A2D]"> · începe acum</span>}
-                {i.endsSoon && !i.startsSoon && (
-                  <span className="font-medium text-[#0D1A2D]"> · termen în fereastră</span>
-                )}
-                {i.invoiceDate && (
-                  <span> · facturare țintă {dataRo(i.invoiceDate)}</span>
-                )}
-              </p>
-
-              {i.remaining.length > 0 && (
-                <p className="mt-1 text-xs text-[#0D1A2D]">
-                  <span className="text-[#5B6673]">Mai sunt: </span>
-                  {i.remaining.join(' · ')}
-                </p>
-              )}
-            </Card>
+              <span className="w-[80px] shrink-0 text-right text-xs tabular-nums text-[#5B6673]">
+                {compact(i.value)} lei
+              </span>
+              <span className="flex w-[104px] shrink-0 justify-end">
+                <StatusPill status={i.status} />
+              </span>
+            </div>
           ))}
-        </div>
+        </Card>
       )}
+      </div>
     </div>
   )
 }

@@ -10,6 +10,7 @@ import { createProject, type NewProject } from '../data/mutations'
 // care citea „2.500" ca 2,5 — bug de introducere de date în wizard)
 import { lei, num, toNum as toNumber } from '../lib/format'
 import { BackLink, Card } from '../components/ui'
+import { PageHeader } from '../components/Shell'
 
 // ── Starea wizard-ului (totul client-side până la Salvează) ──────────────
 interface WJob {
@@ -164,20 +165,20 @@ export function ConfigurareView({
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-6">
+    <div className="mx-auto max-w-5xl px-8 py-6">
       <BackLink label="Proiecte" onClick={onCancel} />
-      <h1 className="text-2xl font-semibold">Configurare proiect</h1>
+      <PageHeader title="Proiect nou" />
 
       {/* indicator de pași */}
-      <div className="mt-4 flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2">
         {STEPS.map((s, i) => (
           <span
             key={s}
             className={`rounded-full px-3 py-1.5 text-xs font-medium ${
               i === step
-                ? 'bg-[#0D1A2D] text-white'
+                ? 'bg-[#2C6E36] text-white'
                 : i < step
-                  ? 'bg-[#DDEDDC] text-[#46862A]'
+                  ? 'bg-[#DDEDDC] text-[#2C6E36]'
                   : 'bg-[#EEECE7] text-[#5B6673]'
             }`}
           >

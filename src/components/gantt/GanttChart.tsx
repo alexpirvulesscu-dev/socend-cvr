@@ -645,7 +645,7 @@ export function GanttChart({
   )
 
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-[20px] bg-white shadow-[0_1px_2px_rgba(13,26,45,0.04),0_8px_24px_rgba(13,26,45,0.06)]">
+    <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-[#E8E8E8] bg-white shadow-[0_1px_2px_rgba(13,26,45,0.03)]">
       {/* bara de comandă */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#F3F1EC] px-5 py-3">
         <div className="flex items-center gap-3">

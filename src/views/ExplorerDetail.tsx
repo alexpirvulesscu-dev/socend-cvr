@@ -1389,7 +1389,8 @@ export function DetailPanel({
   const active = projects.filter((p) => p.active)
   return (
     <div className="flex min-h-0 min-w-[360px] flex-1 flex-col">
-      <div className="mb-2 flex h-8 items-center px-1">
+      {/* antetul se aliniază cu antetul coloanelor (aceeași înălțime) */}
+      <div className="flex h-11 shrink-0 items-center px-1">
         <h2 className="text-[11px] font-semibold uppercase tracking-wider text-[#5B6673]">
           Detaliu
         </h2>
@@ -1401,7 +1402,7 @@ export function DetailPanel({
               <p className="font-medium">Alege un proiect din stânga</p>
               <p className="mx-auto mt-1 max-w-sm text-sm text-[#5B6673]">
                 Calea proiect → job → task se deschide în coloane, iar aici editezi
-                nivelul selectat. {active.length === 0 ? 'Începe cu „+ Proiect".' : ''}
+                nivelul selectat. {active.length === 0 ? 'Începe cu „Proiect nou".' : ''}
               </p>
             </Card>
             <Note />

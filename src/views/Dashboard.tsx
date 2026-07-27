@@ -18,48 +18,15 @@ import {
   type KpiColor,
 } from '../domain/kpi'
 import { compact, dataRo, lei, num, pct, zile } from '../lib/format'
-import { Card } from '../components/ui'
+import { Card, StatCard } from '../components/ui'
 import { PageHeader, PrimaryButton, lunaCurenta } from '../components/Shell'
 import type { Selection } from '../lib/selection'
 
 // ── Bucăți mici de UI ────────────────────────────────────────────────────
 
-const PILL: Record<KpiColor | 'neutral', string> = {
-  good: 'bg-[#DDEDDC] text-[#46862A]',
-  warning: 'bg-[#FBF0D3] text-[#A87400]',
-  error: 'bg-[#F8DEDE] text-[#B23A3A]',
-  neutral: 'bg-[#EEECE7] text-[#5B6673]',
-}
-
-function StatCard({
-  label,
-  value,
-  valueColor,
-  pills,
-}: {
-  label: string
-  value: string
-  valueColor?: string
-  pills: { text: string; tone: KpiColor | 'neutral' }[]
-}) {
-  return (
-    <Card className="!p-5">
-      <p className="text-sm text-[#5B6673]">{label}</p>
-      <p className={`mt-1.5 text-[34px] font-semibold leading-none tracking-tight ${valueColor ?? ''}`}>
-        {value}
-      </p>
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        {pills.map((p) => (
-          <span
-            key={p.text}
-            className={`rounded-full px-2.5 py-1 text-xs font-medium ${PILL[p.tone]}`}
-          >
-            {p.text}
-          </span>
-        ))}
-      </div>
-    </Card>
-  )
+/** „1 bucată" / „3 bucăți" — numărătoarea variațiilor. */
+function bucati(n: number): string {
+  return `${n} ${n === 1 ? 'bucată' : 'bucăți'}`
 }
 
 /** Bara de marjă cu reperul planificat — scara e comună tuturor rândurilor. */
@@ -281,6 +248,7 @@ export function DashboardView({
       {/* cele trei cifre mari */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <StatCard
+          hero
           label="Marjă la zi"
           value={lei(Math.round(marginLei))}
           valueColor={marginLei >= 0 ? 'text-[#46862A]' : 'text-[#D64545]'}
@@ -297,11 +265,13 @@ export function DashboardView({
           ]}
         />
         <StatCard
+          hero
           label="Valoare certificată"
           value={lei(Math.round(certificat))}
           pills={[{ text: `${pct(certifiedPctOfContract, 0)} din contracte`, tone: 'neutral' }]}
         />
         <StatCard
+          hero
           label="Cost la zi"
           value={lei(Math.round(cost))}
           pills={
@@ -416,7 +386,7 @@ export function DashboardView({
                 {vt.approved >= 0 ? '+' : ''}
                 {compact(vt.approved)}
               </p>
-              <p className="text-xs text-[#5B6673]">{vt.approvedCount} bucăți</p>
+              <p className="text-xs text-[#5B6673]">{bucati(vt.approvedCount)}</p>
             </div>
             <div>
               <p className="text-sm text-[#5B6673]">În așteptare</p>
@@ -424,12 +394,12 @@ export function DashboardView({
                 {vt.pending >= 0 ? '+' : ''}
                 {compact(vt.pending)}
               </p>
-              <p className="text-xs text-[#5B6673]">{vt.pendingCount} bucăți</p>
+              <p className="text-xs text-[#5B6673]">{bucati(vt.pendingCount)}</p>
             </div>
             <div>
               <p className="text-sm text-[#5B6673]">Respinse</p>
               <p className="mt-0.5 text-xl font-semibold text-[#5B6673]">{compact(vt.rejected)}</p>
-              <p className="text-xs text-[#5B6673]">{vt.rejectedCount} bucăți</p>
+              <p className="text-xs text-[#5B6673]">{bucati(vt.rejectedCount)}</p>
             </div>
           </div>
         </Card>

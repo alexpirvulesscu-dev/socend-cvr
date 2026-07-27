@@ -1,5 +1,8 @@
-// Componente UI comune — carduri albe fără border, pastile, bare de progres,
-// modale și butoane de ștergere cu confirmare. Stil: Apple-like, conform tokens.
+// Componente UI comune — carduri albe cu contur subțire, pastile, bare de
+// progres, modale și butoane de ștergere cu confirmare.
+// Limbajul vizual (v4): card alb, contur de un fir, colț 16px, umbră aproape
+// invizibilă. Conturul face treaba pe care o făcea umbra grea — separă cardul
+// de fundal fără să-l ridice de pe pagină.
 import { useEffect, useState, type ReactNode } from 'react'
 import type { KpiColor, TaskStatus } from '../domain/kpi'
 import { STATUS_LABELS } from '../data/projects'
@@ -17,12 +20,63 @@ export function Card({
   return (
     <div
       onClick={onClick}
-      className={`rounded-[20px] bg-white p-5 shadow-[0_1px_2px_rgba(13,26,45,0.04),0_8px_24px_rgba(13,26,45,0.06)] ${
-        onClick ? 'cursor-pointer transition-shadow hover:shadow-[0_2px_4px_rgba(13,26,45,0.06),0_12px_32px_rgba(13,26,45,0.10)]' : ''
+      className={`rounded-2xl border border-[#E8E8E8] bg-white p-5 shadow-[0_1px_2px_rgba(13,26,45,0.03)] ${
+        onClick
+          ? 'cursor-pointer transition-shadow hover:shadow-[0_2px_10px_rgba(13,26,45,0.07)]'
+          : ''
       } ${className}`}
     >
       {children}
     </div>
+  )
+}
+
+/**
+ * Cartonaș de cifră, în stilul referinței: etichetă mică gri, cifra mare, apoi
+ * pastile de context. Folosit de Panou, de banda KPI și de „Ce urmează", ca
+ * toate ecranele să prezinte cifrele la fel.
+ */
+export function StatCard({
+  label,
+  value,
+  valueColor,
+  pills = [],
+  footnote,
+  hero = false,
+}: {
+  label: string
+  value: string
+  valueColor?: string
+  pills?: { text: string; tone: KpiColor | 'neutral' }[]
+  footnote?: string
+  /** cifrele de pe Panou, cele mai mari din aplicație */
+  hero?: boolean
+}) {
+  // verdictele scrise (ex. „1 proiect în urmă") sunt mai lungi decât o cifră;
+  // le scădem corpul ca să încapă pe un rând și cardurile să rămână egale
+  const size = hero ? 'text-[34px]' : value.length > 14 ? 'text-[22px]' : 'text-[30px]'
+  return (
+    <Card className="flex flex-col !p-5">
+      <p className="text-sm text-[#5B6673]">{label}</p>
+      <p className={`mt-1.5 ${size} font-semibold leading-tight tracking-tight ${valueColor ?? ''}`}>
+        {value}
+      </p>
+      {pills.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {pills.map((p) => (
+            <span
+              key={p.text}
+              className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                p.tone === 'neutral' ? 'bg-[#EEECE7] text-[#5B6673]' : PILL_STYLES[p.tone]
+              }`}
+            >
+              {p.text}
+            </span>
+          ))}
+        </div>
+      )}
+      {footnote && <p className="mt-auto pt-3 text-xs text-[#5B6673]">{footnote}</p>}
+    </Card>
   )
 }
 

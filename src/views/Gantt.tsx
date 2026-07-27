@@ -5,6 +5,7 @@ import { useState } from 'react'
 import type { EntityPatch, ProjectWithKpis } from '../data/projects'
 import { todayIso } from '../data/projects'
 import { GanttChart } from '../components/gantt/GanttChart'
+import { PageHeader, lunaCurenta } from '../components/Shell'
 
 export function GanttView({
   projects,
@@ -16,14 +17,13 @@ export function GanttView({
   const [focusProjectId, setFocusProjectId] = useState<string | undefined>(undefined)
 
   return (
-    <div className="mx-auto max-w-[1800px] px-6 py-5">
-      <div className="mb-3">
-        <h1 className="text-2xl font-semibold">Gantt</h1>
-        <p className="mt-0.5 text-sm text-[#5B6673]">
-          Planifică în timp: trage barele ca să muți sau să întinzi joburile și taskurile.
-        </p>
-      </div>
-      <div style={{ height: 'calc(100vh - 180px)', minHeight: 460 }}>
+    <div className="mx-auto max-w-[1800px] px-8 py-6">
+      <PageHeader
+        title="Gantt"
+        pill={lunaCurenta(todayIso())}
+        subtitle="Trage barele ca să muți sau să întinzi joburile și taskurile."
+      />
+      <div style={{ height: 'calc(100vh - 190px)', minHeight: 460 }}>
         <GanttChart
           projects={projects}
           focusProjectId={focusProjectId}
