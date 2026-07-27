@@ -15,12 +15,18 @@ import {
   jobPlanPct,
   margin,
   marginColor,
+  marginIfPendingLand,
+  marginPointsVsPlan,
+  outstandingAgeDays,
   planPct,
+  plannedMargin,
   projectKpis,
+  retentionHeld,
   scheduleVarianceLei,
   scheduleColor,
   taskEV,
   taskPct,
+  weightedOutstandingAge,
   wip,
 } from './kpi'
 
@@ -290,5 +296,50 @@ describe('prognoză, abateri și efort (v3.1)', () => {
     expect(k.scheduleVarianceLei).toBeCloseTo(5000) // jumătate din valoare, restantă
     expect(k.billing.facturat).toBe(800)
     expect(k.wip).toBeCloseTo(0) // EV 0 − depus 1000 → clamp la 0
+  })
+})
+
+describe('panoul de bord (v4)', () => {
+  it('plannedMargin: reperul gri de pe barele de marjă', () => {
+    // contract 100k, buget de cost 88k → marja planificată 12%
+    expect(plannedMargin(100_000, 88_000)).toBeCloseTo(0.12)
+    expect(plannedMargin(100_000, 0)).toBeNull() // fără buget nu există plan
+    expect(plannedMargin(0, 5000)).toBeNull()
+  })
+
+  it('marginPointsVsPlan: diferența în puncte procentuale', () => {
+    expect(marginPointsVsPlan(0.086, 0.098)).toBeCloseTo(-1.2, 5)
+    expect(marginPointsVsPlan(0.13, 0.12)).toBeCloseTo(1, 5)
+    expect(marginPointsVsPlan(0.13, null)).toBeNull()
+  })
+
+  it('retentionHeld: garanția reținută din facturat', () => {
+    expect(retentionHeld(476_175, 5)).toBeCloseTo(23_808.75)
+    expect(retentionHeld(476_175, 0)).toBe(0)
+  })
+
+  it('outstandingAgeDays / weightedOutstandingAge', () => {
+    expect(outstandingAgeDays('2026-07-01', '2026-08-04')).toBe(34)
+    expect(outstandingAgeDays(null, '2026-08-04')).toBeNull()
+    // factură viitoare → 0, nu negativ
+    expect(outstandingAgeDays('2026-09-01', '2026-08-04')).toBe(0)
+
+    // media e ponderată cu suma: 100k la 10 zile + 900k la 40 → aproape de 37
+    const avg = weightedOutstandingAge([
+      { outstanding: 100_000, ageDays: 10 },
+      { outstanding: 900_000, ageDays: 40 },
+    ])
+    expect(avg).toBeCloseTo(37, 5)
+    // rândurile fără dată sunt ignorate, nu trag media în jos
+    expect(weightedOutstandingAge([{ outstanding: 5000, ageDays: null }])).toBeNull()
+  })
+
+  it('marginIfPendingLand: variațiile în așteptare urcă marja', () => {
+    // EV 100k, cost 91,4k → marjă 8,6%; cu 8k variații în așteptare → ~15,4%
+    const acum = margin(100_000, 91_400)
+    const dupa = marginIfPendingLand(100_000, 8_000, 91_400)
+    expect(acum).toBeCloseTo(0.086, 3)
+    expect(dupa).toBeGreaterThan(acum)
+    expect(dupa).toBeCloseTo((108_000 - 91_400) / 108_000, 5)
   })
 })

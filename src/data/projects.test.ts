@@ -32,6 +32,7 @@ function makeRawProject(over: Partial<ProjectRow> = {}): ProjectRow {
     pnl_proiect_id: null,
     is_small: false,
     sort_order: 1,
+    retentie_pct: 0,
     jobs: [
       {
         id: 'j1',

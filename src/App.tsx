@@ -1,112 +1,51 @@
 import { useState } from 'react'
 import { useProjectTree } from './data/projects'
-import { useAuth, signOut, type Role } from './lib/auth'
+import { useVariations } from './data/variations'
+import { useAuth, signOut } from './lib/auth'
 import { resolveSelection, type Selection } from './lib/selection'
+import { Sidebar, type Nav } from './components/Shell'
+import { DashboardView } from './views/Dashboard'
 import { ExplorerView } from './views/Explorer'
 import { GanttView } from './views/Gantt'
 import { LookaheadView } from './views/Lookahead'
+import { VariatiiView } from './views/Variatii'
 import { SantierView } from './views/Santier'
 import { ConfigurareView } from './views/Configurare'
 import { LoginView } from './views/Login'
 import { CronologicView } from './views/Cronologic'
 import { Toasts } from './components/Toast'
 
-// v3: biroul are Explorer (coloane Miller) + Gantt (ecran propriu) + Cronologic
-// + wizard-ul de proiect nou. Navigarea rămâne prin stare, fără router.
-type Screen = 'explorer' | 'gantt' | 'urmeaza' | 'santier' | 'config' | 'cronologic'
-type Tab = 'proiecte' | 'gantt' | 'urmeaza' | 'santier'
+// v4: biroul are bară laterală (Panou · Proiecte · Gantt · Ce urmează · Variații
+// · Șantier) + două ecrane fără intrare proprie în meniu (wizardul de proiect nou
+// și vederea cronologică a unui job). Navigarea rămâne prin stare, fără router.
+type Screen = Nav | 'config' | 'cronologic'
 
-function TopBar({
-  active,
-  onTab,
-  role,
-  email,
-}: {
-  active: Tab
-  onTab: (t: Tab) => void
-  role: Role
-  email: string
-}) {
-  const tab = (on: boolean) =>
-    `rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
-      on ? 'bg-[#DDEDDC] text-[#0D1A2D]' : 'text-[#5B6673] hover:text-[#0D1A2D]'
-    }`
-  return (
-    <header className="sticky top-0 z-10 border-b border-[#E8E8E8]/60 bg-[rgba(250,249,246,0.8)] backdrop-blur-xl">
-      <div className="mx-auto flex max-w-[1800px] items-center justify-between px-6 py-2.5">
-        <span className="flex items-center gap-2.5">
-          <img src="/logo-socend.png" alt="Socend Construct" className="h-10 w-auto" />
-          <span className="rounded-md bg-[#DDEDDC] px-2 py-1 text-sm font-bold tracking-wide text-[#46862A]">
-            CVR
-          </span>
-        </span>
-        <div className="flex items-center gap-2">
-          {/* rolul site vede DOAR Șantier — fără taburi de birou */}
-          {role !== 'site' && (
-            <nav className="flex gap-1">
-              <button className={tab(active === 'proiecte')} onClick={() => onTab('proiecte')}>
-                Proiecte
-              </button>
-              <button className={tab(active === 'gantt')} onClick={() => onTab('gantt')}>
-                Gantt
-              </button>
-              <button className={tab(active === 'urmeaza')} onClick={() => onTab('urmeaza')}>
-                Ce urmează
-              </button>
-              <button className={tab(active === 'santier')} onClick={() => onTab('santier')}>
-                Șantier
-              </button>
-            </nav>
-          )}
-          <button
-            onClick={() => void signOut()}
-            title={email}
-            className="rounded-full px-3 py-1.5 text-sm font-medium text-[#5B6673] hover:text-[#0D1A2D]"
-          >
-            Ieși
-          </button>
-        </div>
-      </div>
-    </header>
-  )
-}
-
-/** Aplicația de birou (admin, finance): Explorer + șantier + configurare. */
-function OfficeApp({ role, email }: { role: Role; email: string }) {
-  const [screen, setScreen] = useState<Screen>('explorer')
+/** Aplicația de birou (admin, finance). */
+function OfficeApp({ email }: { email: string }) {
+  const [screen, setScreen] = useState<Screen>('panou')
   const [sel, setSel] = useState<Selection>({})
+  const [newVariation, setNewVariation] = useState(false)
   const { projects, loading, error, refetch, patchEntity } = useProjectTree()
+  const { variations, patchVariation, addLocal } = useVariations()
 
-  const active: Tab =
-    screen === 'santier'
-      ? 'santier'
-      : screen === 'gantt'
-        ? 'gantt'
-        : screen === 'urmeaza'
-          ? 'urmeaza'
-          : 'proiecte'
-  const onTab = (t: Tab) =>
-    setScreen(
-      t === 'santier' ? 'santier' : t === 'gantt' ? 'gantt' : t === 'urmeaza' ? 'urmeaza' : 'explorer'
-    )
+  // ecranele fără intrare în meniu se raportează la secțiunea din care vin
+  const navActive: Nav =
+    screen === 'config' ? 'proiecte' : screen === 'cronologic' ? 'proiecte' : screen
+
+  const shell = (content: React.ReactNode) => (
+    <>
+      <Sidebar active={navActive} onNav={(n) => setScreen(n)} email={email} />
+      <main className="pl-[212px]">{content}</main>
+    </>
+  )
 
   // Ecranul global de încărcare apare DOAR la prima citire; refetch-urile de
   // fundal (ex. după închiderea zilei) nu demontează ecranul curent.
   if (loading && projects.length === 0) {
-    return (
-      <>
-        <TopBar active={active} onTab={onTab} role={role} email={email} />
-        <p className="p-8 text-center text-sm text-[#5B6673]">Se încarcă…</p>
-      </>
-    )
+    return shell(<p className="p-8 text-center text-sm text-[#5B6673]">Se încarcă…</p>)
   }
   if (error) {
-    return (
-      <>
-        <TopBar active={active} onTab={onTab} role={role} email={email} />
-        <p className="p-8 text-center text-sm text-[#D64545]">Eroare: {error}</p>
-      </>
-    )
+    return shell(<p className="p-8 text-center text-sm text-[#D64545]">Eroare: {error}</p>)
   }
 
   // selecția „reparată": dacă o entitate a dispărut, urcăm la strămoșul viu
@@ -116,33 +55,52 @@ function OfficeApp({ role, email }: { role: Role; email: string }) {
     : undefined
   const job =
     project && resolved.jobId ? project.jobs.find((j) => j.id === resolved.jobId) : undefined
-  // cronologicul are nevoie de job; dacă a dispărut între timp, cădem pe explorer
-  const effScreen: Screen = screen === 'cronologic' && (!project || !job) ? 'explorer' : screen
+  // cronologicul are nevoie de job; dacă a dispărut între timp, cădem pe proiecte
+  const effScreen: Screen = screen === 'cronologic' && (!project || !job) ? 'proiecte' : screen
 
-  return (
+  function openInExplorer(s: Selection) {
+    setSel(s)
+    setScreen('proiecte')
+  }
+
+  return shell(
     <>
-      <TopBar active={active} onTab={onTab} role={role} email={email} />
+      {effScreen === 'panou' && (
+        <DashboardView
+          projects={projects}
+          variations={variations}
+          onOpenProject={openInExplorer}
+          onNav={(n) => setScreen(n)}
+          onNewVariation={() => {
+            setNewVariation(true)
+            setScreen('variatii')
+          }}
+        />
+      )}
+      {effScreen === 'variatii' && (
+        <VariatiiView
+          projects={projects}
+          variations={variations}
+          patchVariation={patchVariation}
+          addLocal={addLocal}
+          openNewOnMount={newVariation}
+        />
+      )}
       {effScreen === 'santier' && <SantierView onDataChanged={refetch} />}
       {effScreen === 'gantt' && <GanttView projects={projects} patchEntity={patchEntity} />}
       {effScreen === 'urmeaza' && (
-        <LookaheadView
-          projects={projects}
-          onOpen={(s) => {
-            setSel(s)
-            setScreen('explorer')
-          }}
-        />
+        <LookaheadView projects={projects} onOpen={openInExplorer} />
       )}
       {effScreen === 'config' && (
         <ConfigurareView
           onDone={() => {
             refetch()
-            setScreen('explorer')
+            setScreen('proiecte')
           }}
-          onCancel={() => setScreen('explorer')}
+          onCancel={() => setScreen('proiecte')}
         />
       )}
-      {effScreen === 'explorer' && (
+      {effScreen === 'proiecte' && (
         <ExplorerView
           projects={projects}
           sel={resolved}
@@ -157,17 +115,28 @@ function OfficeApp({ role, email }: { role: Role; email: string }) {
         />
       )}
       {effScreen === 'cronologic' && project && job && (
-        <CronologicView job={job} onBack={() => setScreen('explorer')} />
+        <CronologicView job={job} onBack={() => setScreen('proiecte')} />
       )}
     </>
   )
 }
 
-/** Aplicația de șantier (rolul site): DOAR ziua de raportare. */
-function SiteApp({ role, email }: { role: Role; email: string }) {
+/** Aplicația de șantier (rolul site): DOAR ziua de raportare, fără bară laterală. */
+function SiteApp({ email }: { email: string }) {
   return (
     <>
-      <TopBar active="santier" onTab={() => {}} role={role} email={email} />
+      <header className="sticky top-0 z-10 border-b border-[#E8E8E8]/60 bg-[rgba(250,249,246,0.8)] backdrop-blur-xl">
+        <div className="mx-auto flex max-w-lg items-center justify-between px-4 py-2.5">
+          <img src="/logo-socend.png" alt="Socend Construct" className="h-9 w-auto" />
+          <button
+            onClick={() => void signOut()}
+            title={email}
+            className="rounded-full px-3 py-1.5 text-sm font-medium text-[#5B6673] hover:text-[#0D1A2D]"
+          >
+            Ieși
+          </button>
+        </div>
+      </header>
       <SantierView />
     </>
   )
@@ -187,7 +156,7 @@ function App() {
   if (role === 'site') {
     return (
       <>
-        <SiteApp role={role} email={email} />
+        <SiteApp email={email} />
         <Toasts />
       </>
     )
@@ -195,7 +164,7 @@ function App() {
   if (role === 'admin' || role === 'finance') {
     return (
       <>
-        <OfficeApp role={role} email={email} />
+        <OfficeApp email={email} />
         <Toasts />
       </>
     )

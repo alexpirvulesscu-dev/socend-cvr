@@ -174,11 +174,24 @@ export async function deleteProject(id: string, pnlId: string | null): Promise<v
  */
 export async function updateJobBilling(
   jobId: string,
-  b: { depus: number; certificat: number; facturat: number; incasat: number }
+  b: { depus: number; certificat: number; facturat: number; incasat: number },
+  dataFacturii?: string | null
 ): Promise<void> {
+  const row: Record<string, unknown> = { job_id: jobId, ...b }
+  // se trimite doar când apelantul chiar o schimbă (undefined = las-o cum e)
+  if (dataFacturii !== undefined) row.data_facturii = dataFacturii
   const { error } = await supabase
     .from('cvr_job_billing')
-    .upsert({ job_id: jobId, ...b }, { onConflict: 'job_id' })
+    .upsert(row, { onConflict: 'job_id' })
+  if (error) throw error
+}
+
+/** Garanția de bună execuție reținută de client, în procente (0019). */
+export async function updateProjectRetention(id: string, retentiePct: number): Promise<void> {
+  const { error } = await supabase
+    .from('projects')
+    .update({ retentie_pct: retentiePct })
+    .eq('id', id)
   if (error) throw error
 }
 

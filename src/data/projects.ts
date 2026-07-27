@@ -109,6 +109,8 @@ export interface BillingRow {
   certificat: number
   facturat: number
   incasat: number
+  /** data ultimei facturi a jobului (0019) — pentru vechimea banilor neîncasați */
+  data_facturii?: string | null
 }
 
 const EMPTY_BILLING: BillingInput = { depus: 0, certificat: 0, facturat: 0, incasat: 0 }
@@ -137,6 +139,8 @@ export interface ProjectRow {
   pnl_proiect_id: string | null
   is_small: boolean
   sort_order: number
+  /** garanția de bună execuție reținută de client, în procente (0019) */
+  retentie_pct: number
   jobs: JobRow[]
   // Facturarea NU mai stă pe proiect: e suma situațiilor joburilor (0017).
   // Tabelul `cvr_billing` rămâne în DB ca istoric, dar nu se mai citește.
@@ -335,7 +339,7 @@ export async function fetchPnlCosts(): Promise<Map<string, PnlCosts>> {
 }
 
 const TREE_SELECT = `
-  id, name, client, billing_mode, contract_value, start_date, end_date, active, location, pnl_proiect_id, is_small, sort_order,
+  id, name, client, billing_mode, contract_value, start_date, end_date, active, location, pnl_proiect_id, is_small, sort_order, retentie_pct,
   jobs (
     id, name, start_date, end_date, sort_order, baseline_start_date, baseline_end_date,
     tasks (
@@ -344,7 +348,7 @@ const TREE_SELECT = `
     ),
     cvr_job_budgets ( category, amount ),
     cvr_cost_entries ( id, category, amount, description, entry_date ),
-    cvr_job_billing ( depus, certificat, facturat, incasat )
+    cvr_job_billing ( depus, certificat, facturat, incasat, data_facturii )
   )
 `
 
@@ -370,7 +374,11 @@ export async function fetchProjectTree(): Promise<ProjectWithKpis[]> {
  */
 export type EntityPatch =
   | { kind: 'project'; id: string; patch: Partial<Omit<ProjectRow, 'jobs'>> }
-  | { kind: 'billing'; id: string; patch: Partial<BillingInput> } // id = jobId (situația jobului)
+  | {
+      kind: 'billing'
+      id: string // = jobId (situația jobului)
+      patch: Partial<BillingInput & { data_facturii: string | null }>
+    }
   | { kind: 'job'; id: string; patch: Partial<Omit<JobRow, 'tasks'>> }
   | { kind: 'task'; id: string; patch: Partial<TaskRow> }
   | { kind: 'deliverable'; id: string; patch: Partial<DeliverableRow> }
@@ -400,11 +408,15 @@ function patchProject(p: ProjectWithKpis, a: EntityPatch): ProjectWithKpis | nul
       if (!p.jobs.some((j) => j.id === a.id)) return null
       return {
         ...p,
-        jobs: p.jobs.map((j) =>
-          j.id === a.id
-            ? { ...j, cvr_job_billing: { ...billingOf(j.cvr_job_billing), ...a.patch } }
-            : j
-        ),
+        jobs: p.jobs.map((j) => {
+          if (j.id !== a.id) return j
+          const raw = Array.isArray(j.cvr_job_billing) ? j.cvr_job_billing[0] : j.cvr_job_billing
+          // pornim de la rândul BRUT, ca `data_facturii` să nu se piardă la patch
+          return {
+            ...j,
+            cvr_job_billing: { ...raw, ...billingOf(j.cvr_job_billing), ...a.patch },
+          }
+        }),
       }
     }
     case 'job': {

@@ -29,6 +29,7 @@ import {
   updateJobBilling,
   updateJobBudget,
   updateProject,
+  updateProjectRetention,
   updateTask,
   updateTaskDates,
   updateTaskInvoiceDate,
@@ -123,6 +124,8 @@ function FluxFacturareProiect({ p }: { p: ProjectWithKpis }) {
 /** Situația de lucrări a UNUI job — aici se editează cele 4 valori. */
 function SituatieJob({ job, save }: { job: JobWithKpis; save: Save }) {
   const b = job.kpis.billing
+  const billRow = Array.isArray(job.cvr_job_billing) ? job.cvr_job_billing[0] : job.cvr_job_billing
+  const dataFacturii = billRow?.data_facturii ?? null
   function saveStep(key: keyof BillingInput, raw: string) {
     const v = toNum(raw)
     save(
@@ -158,13 +161,34 @@ function SituatieJob({ job, save }: { job: JobWithKpis; save: Save }) {
           </div>
         ))}
       </div>
-      {job.kpis.wip > 0 && (
-        <p className="mt-4 border-t border-[#E8E8E8] pt-3 text-sm text-[#5B6673]">
-          Construit dar neprobat (WIP):{' '}
-          <strong className="text-[#0D1A2D]">{lei(Math.round(job.kpis.wip))}</strong> — lucrări
-          executate care nu au intrat încă într-o situație
-        </p>
-      )}
+      <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-[#E8E8E8] pt-3 text-sm text-[#5B6673]">
+        <span className="flex items-center gap-2">
+          Data facturii:
+          <InlineEdit
+            type="date"
+            value={dataFacturii ?? ''}
+            placeholder="nesetată"
+            display={
+              <span className="font-medium text-[#0D1A2D]">
+                {dataFacturii ? dataRo(dataFacturii) : <span className="text-[#C9C5BC]">nesetată</span>}
+              </span>
+            }
+            onSave={(raw) =>
+              save(
+                { kind: 'billing', id: job.id, patch: { data_facturii: raw || null } },
+                { kind: 'billing', id: job.id, patch: { data_facturii: dataFacturii } },
+                () => updateJobBilling(job.id, b, raw || null)
+              )
+            }
+          />
+        </span>
+        {job.kpis.wip > 0 && (
+          <span>
+            Construit dar neprobat (WIP):{' '}
+            <strong className="text-[#0D1A2D]">{lei(Math.round(job.kpis.wip))}</strong>
+          </span>
+        )}
+      </div>
     </Card>
   )
 }
@@ -413,6 +437,23 @@ function ProjectDetail({
         {/* controalele rare — apar doar în modul „Editează" */}
         {editing && (
           <div className="flex flex-wrap items-center gap-2 border-t border-[#E8E8E8] pt-3">
+            <label className="flex items-center gap-2 text-sm">
+              <span className="text-[#5B6673]">Garanție reținută</span>
+              <InlineEdit
+                type="number"
+                value={String(p.retentie_pct ?? 0)}
+                display={<span className="font-medium">{num(Number(p.retentie_pct ?? 0))}%</span>}
+                onSave={(raw) => {
+                  const v = toNum(raw)
+                  save(
+                    { kind: 'project', id: p.id, patch: { retentie_pct: v } },
+                    { kind: 'project', id: p.id, patch: { retentie_pct: p.retentie_pct } },
+                    () => updateProjectRetention(p.id, v)
+                  )
+                }}
+                inputClassName="w-14 text-right"
+              />
+            </label>
             <label className="flex cursor-pointer items-center gap-2 text-sm">
               <input
                 type="checkbox"

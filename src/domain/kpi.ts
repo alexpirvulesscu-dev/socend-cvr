@@ -161,6 +161,64 @@ export function baselineSlipDays(baselineEndDate: string | null | undefined, end
   return durationDays(baselineEndDate, endDate)
 }
 
+// ── Panou de bord (v4) ────────────────────────────────────────────────────
+
+/**
+ * Marja PLANIFICATĂ: cât ar trebui să rămână după costuri, dacă bugetul se
+ * respectă. E reperul (liniuța gri) față de care se citește marja reală.
+ * Fără buget (0) nu există plan → null, ca UI-ul să nu deseneze un reper fals.
+ */
+export function plannedMargin(value: number, budgetTotal: number): number | null {
+  if (value <= 0 || budgetTotal <= 0) return null
+  return (value - budgetTotal) / value
+}
+
+/** Diferența în PUNCTE procentuale între marja reală și cea planificată. */
+export function marginPointsVsPlan(actual: number, planned: number | null): number | null {
+  if (planned === null) return null
+  return (actual - planned) * 100
+}
+
+/** Garanția de bună execuție reținută de client din ce s-a facturat. */
+export function retentionHeld(facturat: number, retentiePct: number): number {
+  if (retentiePct <= 0) return 0
+  return facturat * (retentiePct / 100)
+}
+
+/** Vechimea unei facturi neîncasate, în zile. Fără dată → null. */
+export function outstandingAgeDays(dataFacturii: string | null | undefined, today: string): number | null {
+  if (!dataFacturii) return null
+  return Math.max(0, durationDays(dataFacturii, today))
+}
+
+/**
+ * Vechimea MEDIE a banilor neîncasați, ponderată cu suma restantă — o factură
+ * mare și veche cântărește mai mult decât una mică. Fără date → null.
+ */
+export function weightedOutstandingAge(
+  items: { outstanding: number; ageDays: number | null }[]
+): number | null {
+  let sum = 0
+  let weighted = 0
+  for (const i of items) {
+    if (i.ageDays === null || i.outstanding <= 0) continue
+    sum += i.outstanding
+    weighted += i.outstanding * i.ageDays
+  }
+  return sum > 0 ? weighted / sum : null
+}
+
+/**
+ * Marja dacă TOATE variațiile în așteptare ar fi aprobate. Presupune că lucrarea
+ * e deja făcută (deci costul e deja în actuals) și lipsește doar aprobarea —
+ * de aceea suma se adaugă la venit, nu și la cost. UI-ul spune asta explicit.
+ */
+export function marginIfPendingLand(ev: number, pendingAmount: number, cost: number): number {
+  const value = ev + pendingAmount
+  if (value <= 0) return 0
+  return (value - cost) / value
+}
+
 // ── Efort (oameni-zile) ───────────────────────────────────────────────────
 
 export interface EffortKpis {
