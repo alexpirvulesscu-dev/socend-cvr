@@ -1,4 +1,4 @@
-// Gantt-ul interactiv v3 — construit de la zero, fără librării. Ecran dedicat.
+// Gantt-ul interactiv — ecranul „Program". Construit de la zero, fără librării.
 //  - rânduri ierarhice: proiect → joburi → taskuri, pliabile
 //  - barele de JOB și TASK se trag (mutare) și se redimensionează de capete,
 //    cu „snap" pe zi; bara de PROIECT e calculată din joburi (nu se trage)
@@ -6,11 +6,23 @@
 //  - drag cu Pointer Events + setPointerCapture (nu HTML5 DnD): fără imaginea-
 //    fantomă, funcționează și pe touch; în timpul tragerii nu se scrie nimic —
 //    doar la eliberare
+//
+// Pielea (Clean Ledger): fiecare rând are numele pe un rând și o linie de meta
+// dedesubt, bara e o singură pistă rotunjită din trei segmente (realizat →
+// în urmă → planificat), iar ultima coloană e marja rândului.
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { EntityPatch, JobWithKpis, ProjectWithKpis, TaskRow } from '../../data/projects'
 import { shiftJobWithTasks, updateJobDates, updateTaskDates } from '../../data/mutations'
-import { taskPct } from '../../domain/kpi'
-import { dataRo, pct } from '../../lib/format'
+import {
+  behindDays as behindDaysOf,
+  durationDays,
+  marginColor,
+  planPct as planFraction,
+  taskPct,
+} from '../../domain/kpi'
+import { DASH, dataRo, dataScurt, lunaScurt, pct } from '../../lib/format'
+import { lunaCurenta } from '../Shell'
+import { EmptyState, GhostButton, KpiPill, SegmentedControl, scheduleText } from '../ui'
 import { toast } from '../Toast'
 import {
   ZOOM_LEVELS,
@@ -23,8 +35,19 @@ import {
   type ZoomLevel,
 } from './ganttScale'
 
-const LABEL_W = 260
-const ROW_H = 40
+const LABEL_W = 300
+const MARGIN_W = 92
+const ROW_H = 52
+/** înălțimea benzii de axă (luni + zile) */
+const HEAD_H = 46
+/** zona de prindere a barei: mai înaltă decât bara, ca să fie ușor de apucat */
+const GRIP_H = 20
+
+const ZOOM_OPTIONS: { value: ZoomLevel; label: string }[] = [
+  { value: 'saptamana', label: 'Săptămână' },
+  { value: 'luna', label: 'Lună' },
+  { value: 'trimestru', label: 'Trimestru' },
+]
 
 // ── Modelul de rând ──────────────────────────────────────────────────────
 interface GRow {
@@ -36,6 +59,12 @@ interface GRow {
   start: string | null
   end: string | null
   donePct: number
+  /** cât ar trebui să fie realizat azi, după plan */
+  planPct: number
+  /** pozitiv = în urmă, negativ = în avans */
+  behindDays: number
+  /** marja rândului; null = încă nu există EV, deci nu există marjă */
+  margin: number | null
   editable: boolean
   /** task fără date proprii — moștenește vizual fereastra jobului (bară punctată) */
   ghost?: boolean
@@ -62,6 +91,10 @@ function taskDone(t: TaskRow): number {
   )
 }
 
+function clamp01(n: number): number {
+  return Math.min(Math.max(n, 0), 1)
+}
+
 /** Fereastra derivată a unui proiect: min/max peste joburi, altfel datele proprii. */
 function projectWindow(p: ProjectWithKpis): { start: string | null; end: string | null } {
   if (p.jobs.length === 0) return { start: p.start_date, end: p.end_date }
@@ -74,12 +107,26 @@ function projectWindow(p: ProjectWithKpis): { start: string | null; end: string 
   return { start, end }
 }
 
-function taskRowOf(p: ProjectWithKpis, j: JobWithKpis, t: TaskRow, depth: 0 | 1 | 2): GRow {
+/** Linia de meta de sub nume: „apr. – oct. · 65,0% realizat · 2,0 zile în urmă". */
+function metaLine(r: GRow): string {
+  const window = r.start && r.end ? `${lunaScurt(r.start)} – ${lunaScurt(r.end)}` : DASH
+  return `${window} · ${pct(clamp01(r.donePct))} realizat · ${scheduleText(r.behindDays)}`
+}
+
+function taskRowOf(
+  p: ProjectWithKpis,
+  j: JobWithKpis,
+  t: TaskRow,
+  depth: 0 | 1 | 2,
+  today: string
+): GRow {
   const start = t.start_date ?? j.start_date
   const end = t.end_date ?? j.end_date
   const outside =
     (t.start_date !== null && t.start_date < j.start_date) ||
     (t.end_date !== null && t.end_date > j.end_date)
+  const done = taskDone(t)
+  const plan = planFraction(start, end, today)
   return {
     key: `t:${t.id}`,
     kind: 'task',
@@ -88,7 +135,11 @@ function taskRowOf(p: ProjectWithKpis, j: JobWithKpis, t: TaskRow, depth: 0 | 1 
     depth,
     start,
     end,
-    donePct: taskDone(t),
+    donePct: done,
+    planPct: plan,
+    behindDays: behindDaysOf(plan, done, durationDays(start, end)),
+    // costul nu se ține pe task, deci taskul nu are marjă proprie
+    margin: null,
     editable: true,
     ghost: t.start_date === null && t.end_date === null,
     outside,
@@ -103,7 +154,8 @@ function taskRowOf(p: ProjectWithKpis, j: JobWithKpis, t: TaskRow, depth: 0 | 1 
 function buildRows(
   projects: ProjectWithKpis[],
   focusProjectId: string | undefined,
-  collapsed: Set<string>
+  collapsed: Set<string>,
+  today: string
 ): GRow[] {
   const rows: GRow[] = []
   const jobRow = (p: ProjectWithKpis, j: JobWithKpis, depth: 0 | 1 | 2): GRow => ({
@@ -115,6 +167,9 @@ function buildRows(
     start: j.start_date,
     end: j.end_date,
     donePct: j.kpis.donePct,
+    planPct: j.kpis.planPct,
+    behindDays: j.kpis.behindDays,
+    margin: j.kpis.ev > 0 ? j.kpis.margin : null,
     editable: true,
     caret: j.tasks.length > 0,
     collapsed: collapsed.has(`j:${j.id}`),
@@ -129,7 +184,7 @@ function buildRows(
     for (const j of p.jobs) {
       const r = jobRow(p, j, 0)
       rows.push(r)
-      if (!r.collapsed) for (const t of j.tasks) rows.push(taskRowOf(p, j, t, 1))
+      if (!r.collapsed) for (const t of j.tasks) rows.push(taskRowOf(p, j, t, 1, today))
     }
     return rows
   }
@@ -147,6 +202,9 @@ function buildRows(
       start: w.start,
       end: w.end,
       donePct: p.kpis.donePct,
+      planPct: p.kpis.planPct,
+      behindDays: p.kpis.behindDays,
+      margin: p.kpis.ev > 0 ? p.kpis.margin : null,
       editable: false, // fereastra proiectului e calculată din joburi
       caret: p.jobs.length > 0,
       collapsed: pCollapsed,
@@ -156,7 +214,7 @@ function buildRows(
       for (const j of p.jobs) {
         const r = jobRow(p, j, 1)
         rows.push(r)
-        if (!r.collapsed) for (const t of j.tasks) rows.push(taskRowOf(p, j, t, 2))
+        if (!r.collapsed) for (const t of j.tasks) rows.push(taskRowOf(p, j, t, 2, today))
       }
     }
   }
@@ -173,6 +231,35 @@ interface DragState {
   endIdx: number
   deltaDays: number
   moved: boolean
+}
+
+/**
+ * Pista unui rând: un singur cilindru din trei segmente — realizat (verde),
+ * ce trebuia realizat până azi și nu e (chihlimbar), restul duratei (gol).
+ */
+function BarSegments({ donePct, planPct }: { donePct: number; planPct: number }) {
+  const done = clamp01(donePct) * 100
+  const plan = clamp01(planPct) * 100
+  return (
+    <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-track">
+      {plan > done && (
+        <div className="absolute inset-y-0 left-0 bg-warn-soft" style={{ width: `${plan}%` }} />
+      )}
+      <div className="absolute inset-y-0 left-0 bg-pos-fill" style={{ width: `${done}%` }} />
+    </div>
+  )
+}
+
+/** Mânerul de redimensionare: invizibil până la hover pe bară. */
+function ResizeGrip() {
+  return (
+    <span
+      aria-hidden
+      className="pointer-events-none absolute inset-0 flex items-center opacity-0 transition-opacity duration-[120ms] ease-std group-hover:opacity-100"
+    >
+      <span className="mx-auto h-3 w-1 rounded-full bg-ink-3" />
+    </span>
+  )
 }
 
 // ── Un rând, memoizat ────────────────────────────────────────────────────
@@ -221,78 +308,66 @@ const GanttRow = memo(function GanttRow({
   }
   const previewStart = isDragging ? addDays(rangeStart, previewStartIdx!) : r.start
   const previewEnd = isDragging ? addDays(rangeStart, previewEndIdx!) : r.end
-  // ținta de facturare: rombul devine ambru dacă data a trecut (trebuia facturat)
+  // ținta de facturare: rombul devine roșu dacă data a trecut (trebuia facturat)
   const invoiceOverdue = r.invoiceDate !== null && r.invoiceDate !== undefined && r.invoiceDate < today
+  // fundalul rândului se ține pe trei locuri (rând + cele două celule lipite),
+  // ca hover-ul și selecția să nu se rupă la derularea orizontală
+  const cellBg = selected ? 'bg-accent-soft' : 'bg-paper-0 group-hover/row:bg-paper-1'
 
   return (
     <div
-      className={`group/row relative z-10 flex items-center border-b border-[#F3F1EC] hover:bg-[#FAF9F6] ${
-        selected ? 'bg-[#F1EEE9]' : ''
+      className={`group/row relative z-10 flex items-stretch border-b border-line-1 last:border-b-0 ${
+        selected ? 'bg-accent-soft' : 'hover:bg-paper-1'
       }`}
       style={{ height: ROW_H }}
     >
-      {/* eticheta din stânga (lipită la scroll orizontal) */}
+      {/* numele + linia de meta (lipite la scroll orizontal) */}
       <div
-        className={`sticky left-0 z-20 flex h-full shrink-0 items-center gap-1 border-r border-[#E8E8E8] pr-2 group-hover/row:bg-[#FAF9F6] ${
-          selected ? 'bg-[#F1EEE9]' : 'bg-white'
-        }`}
-        style={{ width: LABEL_W, paddingLeft: 8 + r.depth * 18 }}
+        className={`sticky left-0 z-20 flex h-full shrink-0 items-center gap-1.5 border-r border-line-1 pr-3 ${cellBg}`}
+        style={{ width: LABEL_W, paddingLeft: 10 + r.depth * 16 }}
       >
         {r.caret ? (
           <button
             onClick={() => onToggleCaret(r.key)}
             aria-label={r.collapsed ? 'Extinde' : 'Restrânge'}
-            className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[#5B6673] hover:bg-[#EEECE7]"
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-chip text-ink-3 transition-colors duration-[120ms] ease-std hover:bg-segment hover:text-ink-1"
           >
             <span
               aria-hidden
-              className={`text-xs transition-transform ${r.collapsed ? '' : 'rotate-90'}`}
+              className={`text-row transition-transform duration-[120ms] ease-std ${
+                r.collapsed ? '' : 'rotate-90'
+              }`}
             >
               ›
             </span>
           </button>
         ) : (
-          <span className="w-5 shrink-0" />
+          <span className="w-6 shrink-0" />
         )}
-        <span
-          aria-hidden
-          className={`h-2 w-2 shrink-0 rounded-full ${
-            r.kind === 'project'
-              ? 'bg-[#14263F]'
-              : r.kind === 'job'
-                ? 'bg-[#8798AC]'
-                : 'bg-[#C9C5BC]'
-          }`}
-        />
-        <span
-          className={`min-w-0 flex-1 truncate text-sm ${
-            r.kind === 'project'
-              ? 'font-semibold'
-              : r.kind === 'job'
-                ? 'font-medium'
-                : 'text-[#5B6673]'
-          }`}
-          title={r.label}
-        >
-          {r.label}
-        </span>
-        <span className="shrink-0 text-xs font-medium tabular-nums text-[#5B6673]">
-          {pct(r.donePct, 0)}
+        <span className="min-w-0 flex-1">
+          <span
+            className={`block truncate text-row ${
+              r.kind === 'project' ? 'font-semibold text-ink-1' : 'font-medium text-ink-2'
+            }`}
+            title={r.label}
+          >
+            {r.label}
+          </span>
+          <span className="mt-0.5 block truncate text-meta font-medium text-ink-3">
+            {metaLine(r)}
+          </span>
         </span>
       </div>
 
       {/* pista cu bara */}
-      <div className="relative h-full" style={{ width: trackW }}>
+      <div className="relative h-full shrink-0" style={{ width: trackW }}>
         {geom && r.kind === 'project' && (
           <div
-            className="absolute top-1/2 h-2.5 -translate-y-1/2 overflow-hidden rounded-full bg-[#14263F]/15"
-            style={{ left: geom.left, width: geom.width }}
+            className="absolute top-1/2 -translate-y-1/2"
+            style={{ left: geom.left, width: Math.max(geom.width, 8) }}
             title={`${dataRo(r.start!)} – ${dataRo(r.end!)} (calculat din joburi)`}
           >
-            <div
-              className="h-full rounded-full bg-[#14263F]"
-              style={{ width: `${Math.min(r.donePct, 1) * 100}%` }}
-            />
+            <BarSegments donePct={r.donePct} planPct={r.planPct} />
           </div>
         )}
         {geom && r.kind !== 'project' && (
@@ -301,24 +376,32 @@ const GanttRow = memo(function GanttRow({
             onPointerMove={onPointerMove}
             onPointerUp={(e) => onPointerUp(e, r)}
             onPointerCancel={onPointerCancel}
-            className={`group absolute top-1/2 -translate-y-1/2 select-none rounded-lg ${
-              r.kind === 'job' ? 'h-5 bg-[#B9C6D6]' : 'h-6 bg-[#EEECE7]'
-            } ${r.ghost ? 'border border-dashed border-[#8798AC] !bg-transparent' : 'shadow-[0_1px_2px_rgba(13,26,45,0.10)]'} ${
-              r.outside ? 'ring-2 ring-[#F0A800]' : ''
-            } ${isDragging ? 'z-10 shadow-lg ring-2 ring-[#14263F]' : ''} cursor-grab active:cursor-grabbing`}
-            style={{ left: geom.left, width: Math.max(geom.width, 6), touchAction: 'none' }}
+            className={`group absolute top-1/2 flex -translate-y-1/2 cursor-grab select-none items-center active:cursor-grabbing ${
+              isDragging ? 'z-20' : ''
+            }`}
+            style={{
+              left: geom.left,
+              width: Math.max(geom.width, 8),
+              height: GRIP_H,
+              touchAction: 'none',
+            }}
             title={`${r.label} · ${dataRo(previewStart!)} – ${dataRo(previewEnd!)}${
               r.ghost ? ' · fără plan propriu (ca jobul) — trage ca să îl setezi' : ''
             }${r.outside ? ' · în afara intervalului jobului' : ''}`}
           >
-            {!r.ghost && (
-              <div
-                className={`h-full rounded-lg ${r.kind === 'job' ? 'bg-[#14263F]' : 'bg-[#58A834]'}`}
-                style={{ width: `${Math.min(r.donePct, 1) * 100}%` }}
-              />
-            )}
+            <div
+              className={`w-full ${r.outside ? 'rounded-full ring-2 ring-warn' : ''} ${
+                isDragging ? 'rounded-full ring-2 ring-ink-1' : ''
+              }`}
+            >
+              {r.ghost ? (
+                <div className="h-2.5 w-full rounded-full border border-dashed border-line-3" />
+              ) : (
+                <BarSegments donePct={r.donePct} planPct={r.planPct} />
+              )}
+            </div>
             {isDragging && (
-              <span className="absolute -top-5 left-0 whitespace-nowrap rounded bg-[#14263F] px-1.5 py-0.5 text-[10px] font-medium text-white">
+              <span className="absolute -top-5 left-0 whitespace-nowrap rounded-chip bg-ink-1 px-1.5 py-0.5 text-meta font-semibold text-paper-0">
                 {dataRo(previewStart!)} – {dataRo(previewEnd!)}
               </span>
             )}
@@ -327,28 +410,28 @@ const GanttRow = memo(function GanttRow({
               onPointerMove={onPointerMove}
               onPointerUp={(e) => onPointerUp(e, r)}
               onPointerCancel={onPointerCancel}
-              className="absolute -left-1 top-0 h-full w-2.5 cursor-ew-resize rounded-l-lg opacity-0 transition-opacity group-hover:opacity-100"
+              className="absolute -left-1 top-0 h-full w-2.5 cursor-ew-resize"
               style={{ touchAction: 'none' }}
             >
-              <div className="mx-auto mt-1 h-[calc(100%-8px)] w-1 rounded bg-[#0D1A2D]/25" />
+              <ResizeGrip />
             </div>
             <div
               onPointerDown={(e) => onPointerDown(e, r, 'resize-r')}
               onPointerMove={onPointerMove}
               onPointerUp={(e) => onPointerUp(e, r)}
               onPointerCancel={onPointerCancel}
-              className="absolute -right-1 top-0 h-full w-2.5 cursor-ew-resize rounded-r-lg opacity-0 transition-opacity group-hover:opacity-100"
+              className="absolute -right-1 top-0 h-full w-2.5 cursor-ew-resize"
               style={{ touchAction: 'none' }}
             >
-              <div className="mx-auto mt-1 h-[calc(100%-8px)] w-1 rounded bg-[#0D1A2D]/25" />
+              <ResizeGrip />
             </div>
           </div>
         )}
-        {/* ținta de facturare — romb; ambru dacă data a trecut */}
+        {/* ținta de facturare — romb plin; roșu dacă data a trecut */}
         {r.kind === 'task' && r.invoiceDate && r.invoiceDate >= rangeStart && (
           <div
-            className={`absolute top-1/2 z-10 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rotate-45 border border-white ${
-              invoiceOverdue ? 'bg-[#F0A800]' : 'bg-[#14263F]'
+            className={`absolute top-1/2 z-10 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rotate-45 border border-paper-0 ${
+              invoiceOverdue ? 'bg-neg' : 'bg-ink-1'
             }`}
             style={{ left: dayIndex(rangeStart, r.invoiceDate) * dayWidth + dayWidth / 2 }}
             title={`Facturare țintă · ${dataRo(r.invoiceDate)}${
@@ -357,9 +440,31 @@ const GanttRow = memo(function GanttRow({
           />
         )}
       </div>
+
+      {/* marja rândului (lipită la dreapta) */}
+      <div
+        className={`sticky right-0 z-20 flex h-full shrink-0 items-center justify-end border-l border-line-1 px-3 ${cellBg}`}
+        style={{ width: MARGIN_W }}
+      >
+        {r.margin === null ? (
+          <span className="text-row font-medium text-ink-4">{DASH}</span>
+        ) : (
+          <KpiPill color={marginColor(r.margin)}>{pct(r.margin)}</KpiPill>
+        )}
+      </div>
     </div>
   )
 })
+
+/** Un pătrățel de legendă: culoarea + ce înseamnă. */
+function LegendItem({ swatch, label }: { swatch: React.ReactNode; label: string }) {
+  return (
+    <span className="flex items-center gap-1.5">
+      {swatch}
+      {label}
+    </span>
+  )
+}
 
 export function GanttChart({
   projects,
@@ -367,12 +472,15 @@ export function GanttChart({
   onFocusProject,
   patchEntity,
   today,
+  embedded = false,
 }: {
   projects: ProjectWithKpis[]
   focusProjectId: string | undefined
   onFocusProject: (id: string | undefined) => void
   patchEntity: (p: EntityPatch) => void
   today: string
+  /** în pagina unui proiect: filtrul de proiect e al paginii, nu al graficului */
+  embedded?: boolean
 }) {
   const [zoom, setZoom] = useState<ZoomLevel>('luna')
   const [lookahead, setLookahead] = useState(false)
@@ -408,8 +516,8 @@ export function GanttChart({
   }, [scopeKey])
 
   const allRows = useMemo(
-    () => buildRows(projects, focusProjectId, collapsed),
-    [projects, focusProjectId, collapsed]
+    () => buildRows(projects, focusProjectId, collapsed, today),
+    [projects, focusProjectId, collapsed, today]
   )
 
   // filtrul „următoarele 2 săptămâni": doar rândurile care ating fereastra
@@ -435,15 +543,6 @@ export function GanttChart({
 
   const months = useMemo(() => monthSegments(range.start, range.days), [range])
   const trackW = range.days * dayWidth
-
-  const saturdays = useMemo(() => {
-    if (dayWidth < 10) return []
-    const out: number[] = []
-    for (let i = 0; i < range.days; i++) {
-      if (weekdayIndex(addDays(range.start, i)) === 5) out.push(i)
-    }
-    return out
-  }, [range, dayWidth])
 
   const weekStarts = useMemo(() => {
     const out: number[] = []
@@ -625,109 +724,88 @@ export function GanttChart({
     setDragView(null)
   }, [])
 
-  const zoomChip = (z: ZoomLevel, label: string) => (
-    <button
-      key={z}
-      onClick={() => setZoom(z)}
-      className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-        zoom === z ? 'bg-[#DDEDDC] text-[#0D1A2D]' : 'text-[#5B6673] hover:text-[#0D1A2D]'
-      }`}
-    >
-      {label}
-    </button>
-  )
-
-  const legendChip = (cls: string, label: string) => (
-    <span className="flex items-center gap-1.5">
-      <span className={`h-2.5 w-4 rounded-full ${cls}`} />
-      {label}
-    </span>
-  )
+  const innerW = LABEL_W + trackW + MARGIN_W
 
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-[#E8E8E8] bg-white shadow-[0_1px_2px_rgba(13,26,45,0.03)]">
-      {/* bara de comandă */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#F3F1EC] px-5 py-3">
-        <div className="flex items-center gap-3">
-          <select
-            value={focusProjectId ?? ''}
-            onChange={(e) => onFocusProject(e.target.value || undefined)}
-            className="cursor-pointer rounded-full border border-[#E8E8E8] bg-white px-3.5 py-1.5 text-sm font-medium outline-none hover:border-[#58A834]"
-          >
-            <option value="">Toate proiectele active</option>
-            {pickable.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
+    <div className="flex h-full flex-col gap-3">
+      {/* bara de comandă: scopul + fereastra vizibilă + zoom-ul */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          {!embedded && (
+            <select
+              value={focusProjectId ?? ''}
+              onChange={(e) => onFocusProject(e.target.value || undefined)}
+              aria-label="Proiect"
+              className="cursor-pointer rounded-btn border border-line-3 bg-paper-0 px-3 py-[9px] text-row font-semibold text-ink-2 transition-colors duration-[120ms] ease-std hover:bg-paper-1"
+            >
+              <option value="">Toate proiectele active</option>
+              {pickable.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          )}
+          <GhostButton onClick={jumpToToday}>Azi</GhostButton>
           <button
-            onClick={jumpToToday}
-            className="rounded-full bg-[#EEECE7] px-3.5 py-1.5 text-sm font-medium text-[#5B6673] hover:text-[#0D1A2D]"
-          >
-            Azi
-          </button>
-        </div>
-        <div className="flex items-center gap-1">
-          <button
+            type="button"
+            aria-pressed={lookahead}
             onClick={() => setLookahead((l) => !l)}
-            className={`mr-2 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+            className={`rounded-btn border px-3 py-[9px] text-row font-semibold transition-colors duration-[120ms] ease-std ${
               lookahead
-                ? 'bg-[#14263F] text-white'
-                : 'bg-[#EEECE7] text-[#5B6673] hover:text-[#0D1A2D]'
+                ? 'border-accent bg-accent-soft text-accent-ink'
+                : 'border-line-3 bg-paper-0 text-ink-2 hover:bg-paper-1'
             }`}
           >
             Următoarele 2 săptămâni
           </button>
-          {zoomChip('saptamana', 'Săptămână')}
-          {zoomChip('luna', 'Lună')}
-          {zoomChip('trimestru', 'Trimestru')}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full border border-line-2 bg-paper-0 px-3 py-1.5 text-row font-semibold text-ink-2">
+            {lunaCurenta(range.start)} – {lunaCurenta(range.end)}
+          </span>
+          <SegmentedControl options={ZOOM_OPTIONS} value={zoom} onChange={setZoom} />
         </div>
       </div>
 
-      {rows.length === 0 ? (
-        <p className="px-5 py-16 text-center text-sm text-[#5B6673]">
-          {lookahead
-            ? 'Nimic planificat în următoarele 2 săptămâni.'
-            : 'Niciun rând de arătat — alege un proiect sau adaugă joburi.'}
-        </p>
-      ) : (
-        <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto">
-          <div style={{ width: LABEL_W + trackW, minWidth: '100%' }}>
-            {/* axa de timp — lipită sus */}
-            <div className="sticky top-0 z-30 bg-white">
-              <div className="flex">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-card border border-line-2 bg-paper-0 shadow-e1">
+        {rows.length === 0 ? (
+          <EmptyState title="Nimic de arătat">
+            {lookahead
+              ? 'Nimic planificat în următoarele 2 săptămâni.'
+              : 'Niciun rând de arătat — alege un proiect sau adaugă joburi.'}
+          </EmptyState>
+        ) : (
+          <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto">
+            <div style={{ width: innerW, minWidth: '100%' }}>
+              {/* axa de timp — lipită sus */}
+              <div className="sticky top-0 z-30 flex border-b border-line-2 bg-paper-0">
                 <div
-                  className="sticky left-0 z-10 flex shrink-0 items-end border-r border-[#E8E8E8] bg-white px-3 pb-1"
-                  style={{ width: LABEL_W }}
+                  className="sticky left-0 z-20 flex shrink-0 items-end border-r border-line-1 bg-paper-0 px-3 pb-2"
+                  style={{ width: LABEL_W, height: HEAD_H }}
                 >
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-[#5B6673]">
+                  <span className="text-th font-semibold uppercase tracking-[0.07em] text-ink-3">
                     Proiect · Job · Task
                   </span>
                 </div>
-                <div className="relative h-6" style={{ width: trackW }}>
+                <div className="relative shrink-0" style={{ width: trackW, height: HEAD_H }}>
+                  {/* banda lunilor */}
                   {months.map((m) => (
                     <span
                       key={m.label + m.startIdx}
-                      className="absolute top-0 truncate border-l border-[#E8E8E8] pl-1.5 text-[11px] font-semibold uppercase tracking-wider text-[#5B6673]"
+                      className="absolute top-2 truncate border-l border-line-2 pl-1.5 text-th font-semibold uppercase tracking-[0.07em] text-ink-3"
                       style={{ left: m.startIdx * dayWidth, width: m.days * dayWidth }}
                     >
                       {m.days * dayWidth > 44 ? m.label : ''}
                     </span>
                   ))}
-                </div>
-              </div>
-              <div className="flex border-b border-[#E8E8E8]">
-                <div className="sticky left-0 z-10 shrink-0 bg-white" style={{ width: LABEL_W }} />
-                <div className="relative h-5" style={{ width: trackW }}>
+                  {/* banda zilelor / săptămânilor */}
                   {zoom === 'saptamana' &&
                     Array.from({ length: range.days }, (_, i) => (
                       <span
                         key={i}
-                        className={`absolute top-0 text-center text-[10px] tabular-nums ${
-                          weekdayIndex(addDays(range.start, i)) >= 5
-                            ? 'text-[#C9C5BC]'
-                            : 'text-[#5B6673]'
+                        className={`absolute bottom-1 text-center text-meta font-medium tabular-nums ${
+                          weekdayIndex(addDays(range.start, i)) >= 5 ? 'text-ink-4' : 'text-ink-3'
                         }`}
                         style={{ left: i * dayWidth, width: dayWidth }}
                       >
@@ -738,96 +816,110 @@ export function GanttChart({
                     weekStarts.map((i) => (
                       <span
                         key={i}
-                        className="absolute top-0 border-l border-[#EEECE7] pl-1 text-[10px] tabular-nums text-[#5B6673]"
+                        className="absolute bottom-1 border-l border-line-1 pl-1 text-meta font-medium tabular-nums text-ink-4"
                         style={{ left: i * dayWidth, width: 7 * dayWidth }}
                       >
                         {Number(addDays(range.start, i).slice(8))}
                       </span>
                     ))}
-                  {/* fanionul „Azi" */}
+                  {/* eticheta zilei de azi, exact deasupra liniei roșii */}
                   <span
-                    className="absolute -top-0 z-10 -translate-x-1/2 rounded-full bg-[#14263F] px-1.5 text-[9px] font-bold uppercase tracking-wider text-white"
+                    className="absolute top-2 z-10 -translate-x-1/2 whitespace-nowrap bg-paper-0 px-1 text-meta font-semibold text-neg"
                     style={{ left: todayX + dayWidth / 2 }}
                   >
-                    azi
+                    {dataScurt(today)}
+                  </span>
+                </div>
+                <div
+                  className="sticky right-0 z-20 flex shrink-0 items-end justify-end border-l border-line-1 bg-paper-0 px-3 pb-2"
+                  style={{ width: MARGIN_W, height: HEAD_H }}
+                >
+                  <span className="text-th font-semibold uppercase tracking-[0.07em] text-ink-3">
+                    Marjă
                   </span>
                 </div>
               </div>
-            </div>
 
-            {/* corpul: rândurile cu bare */}
-            <div className="relative">
-              {/* weekenduri + fereastra lookahead + linia de azi, pe toată înălțimea */}
-              <div
-                className="pointer-events-none absolute inset-y-0 z-0"
-                style={{ left: LABEL_W, width: trackW }}
-              >
-                {saturdays.map((i) => (
-                  <div
-                    key={i}
-                    className="absolute inset-y-0 bg-[#F6F4EF]"
-                    style={{ left: i * dayWidth, width: 2 * dayWidth }}
-                  />
-                ))}
-                {lookahead && (
-                  <div
-                    className="absolute inset-y-0 bg-[#DDEDDC]/40"
-                    style={{ left: todayX, width: 14 * dayWidth }}
-                  />
-                )}
+              {/* corpul: rândurile cu bare */}
+              <div className="relative">
+                {/* caroiajul lunilor + fereastra lookahead + linia de azi */}
                 <div
-                  className="absolute inset-y-0 w-0.5 bg-[#14263F]"
-                  style={{ left: todayX + dayWidth / 2 }}
-                  title={`Azi · ${dataRo(today)}`}
-                />
-              </div>
-
-              {rows.map((r) => {
-                const dragging = dragView?.key === r.key
-                return (
-                  <GanttRow
-                    key={r.key}
-                    row={r}
-                    rangeStart={range.start}
-                    dayWidth={dayWidth}
-                    trackW={trackW}
-                    today={today}
-                    selected={false}
-                    previewStartIdx={dragging ? dragView!.startIdx : null}
-                    previewEndIdx={dragging ? dragView!.endIdx : null}
-                    onToggleCaret={toggleCaret}
-                    onPointerDown={onBarPointerDown}
-                    onPointerMove={onBarPointerMove}
-                    onPointerUp={onBarPointerUp}
-                    onPointerCancel={onBarPointerCancel}
+                  className="pointer-events-none absolute inset-y-0 z-0"
+                  style={{ left: LABEL_W, width: trackW }}
+                >
+                  {months.map((m) => (
+                    <div
+                      key={`g${m.startIdx}`}
+                      className="absolute inset-y-0 w-px bg-grid"
+                      style={{ left: m.startIdx * dayWidth }}
+                    />
+                  ))}
+                  {lookahead && (
+                    <div
+                      className="absolute inset-y-0 bg-accent-soft"
+                      style={{ left: todayX, width: 14 * dayWidth }}
+                    />
+                  )}
+                  <div
+                    className="absolute inset-y-0 border-l border-dashed border-neg"
+                    style={{ left: todayX + dayWidth / 2 }}
+                    title={`Azi · ${dataRo(today)}`}
                   />
-                )
-              })}
+                </div>
+
+                {rows.map((r) => {
+                  const dragging = dragView?.key === r.key
+                  return (
+                    <GanttRow
+                      key={r.key}
+                      row={r}
+                      rangeStart={range.start}
+                      dayWidth={dayWidth}
+                      trackW={trackW}
+                      today={today}
+                      selected={false}
+                      previewStartIdx={dragging ? dragView!.startIdx : null}
+                      previewEndIdx={dragging ? dragView!.endIdx : null}
+                      onToggleCaret={toggleCaret}
+                      onPointerDown={onBarPointerDown}
+                      onPointerMove={onBarPointerMove}
+                      onPointerUp={onBarPointerUp}
+                      onPointerCancel={onBarPointerCancel}
+                    />
+                  )
+                })}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* legenda + indiciile */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-[#F3F1EC] px-5 py-2.5 text-xs text-[#5B6673]">
-        {legendChip('bg-[#14263F]', 'proiect / job')}
-        {legendChip('bg-[#58A834]', 'task')}
-        <span className="flex items-center gap-1.5">
-          <span className="h-2.5 w-4 rounded-full border border-dashed border-[#8798AC]" />
-          fără plan propriu
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="h-2.5 w-4 rounded-full ring-2 ring-[#F0A800]" />
-          în afara jobului
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rotate-45 bg-[#115468]" />
-          facturare țintă
-        </span>
-        <span className="ml-auto">
-          Trage bara ca să muți · trage capetele ca să scurtezi/lungești · mutarea unui job îi mută
-          și taskurile
-        </span>
+        {/* legenda + indiciile */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-line-2 bg-paper-1 px-5 py-2.5 text-meta font-medium text-ink-4">
+          <LegendItem
+            swatch={<span aria-hidden className="h-2 w-4 rounded-full bg-pos-fill" />}
+            label="Realizat"
+          />
+          <LegendItem
+            swatch={<span aria-hidden className="h-2 w-4 rounded-full bg-warn-soft" />}
+            label="În urmă"
+          />
+          <LegendItem
+            swatch={<span aria-hidden className="h-2 w-4 rounded-full bg-track" />}
+            label="Planificat"
+          />
+          <LegendItem
+            swatch={<span aria-hidden className="h-2 w-2 rotate-45 bg-ink-1" />}
+            label="Reper"
+          />
+          <LegendItem
+            swatch={<span aria-hidden className="h-3 border-l border-dashed border-neg" />}
+            label="Azi"
+          />
+          <span className="ml-auto">
+            Trage bara ca să muți · trage capetele ca să scurtezi/lungești · mutarea unui job îi
+            mută și taskurile
+          </span>
+        </div>
       </div>
     </div>
   )

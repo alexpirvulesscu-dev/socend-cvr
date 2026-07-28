@@ -41,8 +41,8 @@ export function Toasts() {
           key={t.id}
           role="status"
           onClick={() => setItems((prev) => prev.filter((x) => x.id !== t.id))}
-          className={`cursor-pointer rounded-2xl px-4 py-3 text-sm font-medium text-white shadow-lg ${
-            t.kind === 'error' ? 'bg-[#D64545]' : 'bg-[#58A834]'
+          className={`cursor-pointer rounded-card px-4 py-3 text-row font-semibold text-paper-0 shadow-e2 ${
+            t.kind === 'error' ? 'bg-neg' : 'bg-accent'
           }`}
         >
           {t.text}

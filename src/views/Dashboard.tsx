@@ -1,4 +1,4 @@
-// Panoul de bord (v4) — ecranul de start al biroului, după referința de design.
+// Dashboard — ecranul de start al biroului, pe sistemul Clean Ledger.
 // Începe cu BANII (marjă, certificat, cost), apoi arată marja pe fiecare proiect
 // față de plan, apoi spune CE E DE FĂCUT. Totul e derivat din datele existente.
 import { useMemo } from 'react'
@@ -15,11 +15,20 @@ import {
   plannedMargin,
   retentionHeld,
   weightedOutstandingAge,
-  type KpiColor,
 } from '../domain/kpi'
-import { compact, dataRo, lei, num, pct, zile } from '../lib/format'
-import { Card, StatCard } from '../components/ui'
-import { PageHeader, PrimaryButton, lunaCurenta } from '../components/Shell'
+import { DASH, compact, compactLei, dataRo, lei, pct, puncte, zile } from '../lib/format'
+import {
+  Card,
+  EmptyState,
+  GhostButton,
+  MarginRail,
+  PrimaryButton,
+  StatCard,
+  toneOf,
+  toneText,
+  type Tone,
+} from '../components/ui'
+import { PageHeader, lunaCurenta } from '../components/Shell'
 import type { Selection } from '../lib/selection'
 
 // ── Bucăți mici de UI ────────────────────────────────────────────────────
@@ -29,33 +38,30 @@ function bucati(n: number): string {
   return `${n} ${n === 1 ? 'bucată' : 'bucăți'}`
 }
 
-/** Bara de marjă cu reperul planificat — scara e comună tuturor rândurilor. */
-function MarginBar({
-  actual,
-  planned,
-  scaleMax,
+/**
+ * Cifra de detaliu dintr-un card cu trei coloane: etichetă → cifră (text-stat-sm)
+ * → o notă. Nu e un StatCard (acela e el însuși un card); e o celulă dintr-unul.
+ */
+function MiniStat({
+  label,
+  value,
+  tone = 'neutral',
+  note,
 }: {
-  actual: number
-  planned: number | null
-  scaleMax: number
+  label: string
+  value: string
+  tone?: Tone
+  note: string
 }) {
-  const clamp = (v: number) => Math.min(Math.max(v, 0), scaleMax) / scaleMax
-  const tone = marginColor(actual)
-  const fill =
-    tone === 'good' ? 'bg-[#58A834]' : tone === 'warning' ? 'bg-[#F0A800]' : 'bg-[#D64545]'
   return (
-    <div className="relative h-2 w-full rounded-full bg-[#EEECE7]">
-      <div
-        className={`h-2 rounded-full ${fill}`}
-        style={{ width: `${clamp(actual) * 100}%`, minWidth: actual > 0 ? 6 : 0 }}
-      />
-      {planned !== null && (
-        <div
-          title={`Marjă planificată ${pct(planned)}`}
-          className="absolute -top-1 h-4 w-0.5 rounded bg-[#8798AC]"
-          style={{ left: `calc(${clamp(planned) * 100}% - 1px)` }}
-        />
-      )}
+    <div className="min-w-0">
+      <p className="text-sub font-medium text-ink-3">{label}</p>
+      <p
+        className={`mt-1 text-stat-sm font-bold tracking-[-0.02em] tabular-nums ${toneText(tone)}`}
+      >
+        {value}
+      </p>
+      <p className="mt-0.5 truncate text-sub text-ink-3">{note}</p>
     </div>
   )
 }
@@ -70,10 +76,11 @@ interface Alert {
   go: () => void
 }
 
+/** Punctul pătrat din fața alertei — culoarea e verdictul, nu decor. */
 const DOT: Record<AlertTone, string> = {
-  red: 'bg-[#D64545]',
-  amber: 'bg-[#F0A800]',
-  blue: 'bg-[#5B85AA]',
+  red: 'bg-neg-fill',
+  amber: 'bg-warn-fill',
+  blue: 'bg-info-fill',
 }
 
 /** Regulile care produc lista — ordonate: bani pierduți, apoi termene, apoi info. */
@@ -94,7 +101,7 @@ function buildAlerts(
       const overPct = allowable > 0 ? Math.abs(p.kpis.costVariance) / allowable : 0
       out.push({
         tone: 'red',
-        text: `${p.name} pierde bani: costul e cu ${pct(overPct, 0)} peste cât ar fi trebuit la ${pct(p.kpis.donePct, 0)} realizat.`,
+        text: `${p.name} pierde bani: costul e cu ${pct(overPct)} peste cât ar fi trebuit la ${pct(p.kpis.donePct)} realizat.`,
         action: 'Vezi costurile →',
         go: () => onOpen({ projectId: p.id }),
       })
@@ -238,132 +245,135 @@ export function DashboardView({
   )
 
   return (
-    <div className="mx-auto max-w-[1500px] px-8 py-6">
+    <div className="mx-auto max-w-[1500px] px-5 py-6 md:px-8">
       <PageHeader
-        title="Panou"
+        title="Dashboard"
         pill={lunaCurenta(today)}
         action={<PrimaryButton onClick={onNewVariation}>Variație nouă</PrimaryButton>}
       />
 
-      {/* cele trei cifre mari */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      {/* cele trei cifre mari — cifra e singurul moment de culoare din card */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard
           hero
           label="Marjă la zi"
-          value={lei(Math.round(marginLei))}
-          valueColor={marginLei >= 0 ? 'text-[#46862A]' : 'text-[#D64545]'}
+          value={compactLei(Math.round(marginLei))}
+          tone={toneOf(marginColor(marginPct))}
           pills={[
-            { text: `${pct(marginPct)} din valoare`, tone: marginColor(marginPct) },
+            { text: `${pct(marginPct)} din valoare` },
             ...(pointsVsPlan !== null
-              ? [
-                  {
-                    text: `${pointsVsPlan >= 0 ? '+' : '−'}${num(Math.abs(pointsVsPlan), 1)} pt față de plan`,
-                    tone: (pointsVsPlan >= 0 ? 'good' : 'warning') as KpiColor,
-                  },
-                ]
+              ? [{ text: `${puncte(pointsVsPlan)} față de plan` }]
               : []),
           ]}
         />
         <StatCard
           hero
           label="Valoare certificată"
-          value={lei(Math.round(certificat))}
-          pills={[{ text: `${pct(certifiedPctOfContract, 0)} din contracte`, tone: 'neutral' }]}
+          value={compactLei(Math.round(certificat))}
+          pills={[{ text: `${pct(certifiedPctOfContract)} din contracte` }]}
         />
         <StatCard
           hero
           label="Cost la zi"
-          value={lei(Math.round(cost))}
+          value={compactLei(Math.round(cost))}
           pills={
             vt.pending !== 0
-              ? [{ text: `${compact(vt.pending)} lei variații în așteptare`, tone: 'warning' }]
-              : [{ text: 'nicio variație în așteptare', tone: 'neutral' }]
+              ? [{ text: `${compactLei(vt.pending)} variații în așteptare`, tone: 'warn' }]
+              : [{ text: 'nicio variație în așteptare' }]
           }
         />
       </div>
 
       {/* marja pe proiect + necesită atenție */}
-      <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-[1fr_380px]">
-        <Card className="!p-5">
-          <h2 className="text-lg font-semibold">Marjă pe proiect</h2>
-          <p className="mt-0.5 text-sm text-[#5B6673]">
-            Marja reală pe scara 0–{pct(scaleMax, 0)} · liniuța gri e marja planificată
-          </p>
-          <div className="mt-4 divide-y divide-[#F3F1EC]">
-            {active.length === 0 && (
-              <p className="py-6 text-center text-sm text-[#5B6673]">Niciun proiect activ.</p>
-            )}
-            {started.map((p) => {
-              const budget = p.jobs.reduce((s, j) => s + j.kpis.budgetTotal, 0)
-              const planned = plannedMargin(Number(p.contract_value), budget)
-              const tone = marginColor(p.kpis.margin)
-              return (
-                <button
-                  key={p.id}
-                  onClick={() => onOpenProject({ projectId: p.id })}
-                  className="grid w-full grid-cols-[minmax(140px,1.1fr)_minmax(120px,1fr)_auto] items-center gap-4 py-3 text-left hover:opacity-80"
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-semibold">{p.name}</span>
-                    <span className="block truncate text-xs text-[#5B6673]">
-                      {p.client ? `${p.client} · ` : ''}
-                      {pct(p.kpis.donePct, 0)} realizat
+      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
+        <Card
+          title="Marjă pe proiect"
+          subtitle={`Marja reală pe scara 0–${pct(scaleMax)} · liniuța gri e marja planificată`}
+        >
+          {active.length === 0 ? (
+            <EmptyState title="Niciun proiect activ">
+              Marjele apar aici imediat ce un proiect activ are lucrări executate.
+            </EmptyState>
+          ) : (
+            <div className="-mx-5">
+              {started.map((p) => {
+                const budget = p.jobs.reduce((s, j) => s + j.kpis.budgetTotal, 0)
+                const planned = plannedMargin(Number(p.contract_value), budget)
+                const tone = toneOf(marginColor(p.kpis.margin))
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => onOpenProject({ projectId: p.id })}
+                    className="grid w-full grid-cols-[minmax(0,1.1fr)_minmax(48px,1fr)_auto] items-center gap-3 border-b border-line-1 px-5 py-3 text-left transition-colors duration-[120ms] ease-std last:border-b-0 hover:bg-paper-1 sm:gap-4"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-row font-bold text-ink-1">
+                        {p.name}
+                      </span>
+                      <span className="block truncate text-sub text-ink-3">
+                        {p.client ? `${p.client} · ` : ''}
+                        {pct(p.kpis.donePct)} realizat
+                      </span>
                     </span>
-                  </span>
-                  <MarginBar actual={p.kpis.margin} planned={planned} scaleMax={scaleMax} />
-                  <span className="whitespace-nowrap text-right text-sm tabular-nums">
-                    <strong
-                      className={
-                        tone === 'error'
-                          ? 'text-[#D64545]'
-                          : tone === 'warning'
-                            ? 'text-[#A87400]'
-                            : 'text-[#46862A]'
-                      }
-                    >
-                      {pct(p.kpis.margin)}
-                    </strong>
-                    <span className="text-[#5B6673]">
-                      {planned !== null ? ` · plan ${pct(planned)}` : ' · fără buget'}
+                    <MarginRail
+                      actual={p.kpis.margin}
+                      planned={planned}
+                      scaleMax={scaleMax}
+                      tone={tone}
+                    />
+                    <span className="whitespace-nowrap text-right text-row tabular-nums">
+                      <strong className={`font-bold ${toneText(tone)}`}>
+                        {pct(p.kpis.margin)}
+                      </strong>
+                      <span className="text-ink-3">
+                        {planned !== null ? ` · plan ${pct(planned)}` : ' · fără buget'}
+                      </span>
                     </span>
-                  </span>
-                </button>
-              )
-            })}
-            {/* proiectele fără lucrări executate nu au marjă de judecat — nu le
-                colorăm în roșu, doar le numărăm, ca lista să rămână despre bani */}
-            {notStarted.length > 0 && (
-              <p className="pt-3 text-xs text-[#5B6673]">
-                {notStarted.length}{' '}
-                {notStarted.length === 1 ? 'proiect activ nu are' : 'proiecte active nu au'} încă
-                lucrări executate — apar aici după prima raportare.
-              </p>
-            )}
-          </div>
+                  </button>
+                )
+              })}
+              {/* proiectele fără lucrări executate nu au marjă de judecat — nu le
+                  colorăm în roșu, doar le numărăm, ca lista să rămână despre bani */}
+              {notStarted.length > 0 && (
+                <p className="px-5 pt-3 text-sub text-ink-3">
+                  {notStarted.length}{' '}
+                  {notStarted.length === 1 ? 'proiect activ nu are' : 'proiecte active nu au'} încă
+                  lucrări executate — apar aici după prima raportare.
+                </p>
+              )}
+            </div>
+          )}
         </Card>
 
-        <Card className="!p-5">
-          <h2 className="text-lg font-semibold">Necesită atenție</h2>
-          <p className="mt-0.5 text-sm text-[#5B6673]">
-            {alerts.length === 0
+        <Card
+          title="Necesită atenție"
+          subtitle={
+            alerts.length === 0
               ? 'nimic urgent'
-              : `${alerts.length} ${alerts.length === 1 ? 'lucru' : 'lucruri'} săptămâna asta`}
-          </p>
+              : `${alerts.length} ${alerts.length === 1 ? 'lucru' : 'lucruri'} săptămâna asta`
+          }
+        >
           {alerts.length === 0 ? (
-            <p className="mt-4 text-sm text-[#5B6673]">
+            <EmptyState title="Nimic urgent">
               Niciun proiect nu pierde bani, nicio variație nu așteaptă și nicio țintă de facturare
               nu e depășită.
-            </p>
+            </EmptyState>
           ) : (
-            <div className="mt-2 divide-y divide-[#F3F1EC]">
+            <div className="-mx-5">
               {alerts.map((a, i) => (
-                <div key={i} className="flex gap-2.5 py-3">
-                  <span aria-hidden className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${DOT[a.tone]}`} />
+                <div
+                  key={i}
+                  className="flex gap-2.5 border-b border-line-1 px-5 py-3 last:border-b-0"
+                >
+                  <span
+                    aria-hidden
+                    className={`mt-[5px] h-[7px] w-[7px] shrink-0 rounded-[2px] ${DOT[a.tone]}`}
+                  />
                   <div className="min-w-0">
-                    <p className="text-sm leading-snug">{a.text}</p>
+                    <p className="text-row leading-snug text-ink-2">{a.text}</p>
                     <button
                       onClick={a.go}
-                      className="mt-1 text-sm font-semibold text-[#2C6E36] hover:underline"
+                      className="mt-1 rounded-chip text-row font-semibold text-accent-ink transition-colors duration-[120ms] ease-std hover:text-accent-hover hover:underline"
                     >
                       {a.action}
                     </button>
@@ -377,61 +387,64 @@ export function DashboardView({
 
       {/* variații + bani și situații */}
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card className="!p-5">
-          <h2 className="text-lg font-semibold">Variații · {lunaCurenta(today).toLowerCase()}</h2>
-          <div className="mt-4 grid grid-cols-3 gap-4">
-            <div>
-              <p className="text-sm text-[#5B6673]">Aprobate</p>
-              <p className="mt-0.5 text-xl font-semibold text-[#46862A]">
-                {vt.approved >= 0 ? '+' : ''}
-                {compact(vt.approved)}
-              </p>
-              <p className="text-xs text-[#5B6673]">{bucati(vt.approvedCount)}</p>
+        <Card
+          title={`Variații · ${lunaCurenta(today).toLowerCase()}`}
+          subtitle="Lucrări suplimentare propuse clientului și starea lor"
+        >
+          {variations.length === 0 ? (
+            <EmptyState
+              title="Nicio variație"
+              action={<GhostButton onClick={onNewVariation}>Variație nouă</GhostButton>}
+            >
+              Aici apar lucrările suplimentare, cu suma cerută și răspunsul clientului.
+            </EmptyState>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <MiniStat
+                label="Aprobate"
+                value={`${vt.approved >= 0 ? '+' : ''}${compact(vt.approved)}`}
+                tone="pos"
+                note={bucati(vt.approvedCount)}
+              />
+              <MiniStat
+                label="În așteptare"
+                value={`${vt.pending >= 0 ? '+' : ''}${compact(vt.pending)}`}
+                tone="warn"
+                note={bucati(vt.pendingCount)}
+              />
+              <MiniStat
+                label="Respinse"
+                value={compact(vt.rejected)}
+                note={bucati(vt.rejectedCount)}
+              />
             </div>
-            <div>
-              <p className="text-sm text-[#5B6673]">În așteptare</p>
-              <p className="mt-0.5 text-xl font-semibold text-[#A87400]">
-                {vt.pending >= 0 ? '+' : ''}
-                {compact(vt.pending)}
-              </p>
-              <p className="text-xs text-[#5B6673]">{bucati(vt.pendingCount)}</p>
-            </div>
-            <div>
-              <p className="text-sm text-[#5B6673]">Respinse</p>
-              <p className="mt-0.5 text-xl font-semibold text-[#5B6673]">{compact(vt.rejected)}</p>
-              <p className="text-xs text-[#5B6673]">{bucati(vt.rejectedCount)}</p>
-            </div>
-          </div>
+          )}
         </Card>
 
-        <Card className="!p-5">
-          <h2 className="text-lg font-semibold">Bani și situații</h2>
-          <div className="mt-4 grid grid-cols-3 gap-4">
-            <div>
-              <p className="text-sm text-[#5B6673]">Facturat, neîncasat</p>
-              <p className="mt-0.5 text-xl font-semibold">{compact(outstanding)}</p>
-              <p className="text-xs text-[#5B6673]">
-                {avgAge !== null ? `în medie de ${zile(avgAge)}` : 'fără date de facturare'}
-              </p>
-            </div>
-            <div>
-              <p className="text-sm text-[#5B6673]">Garanții reținute</p>
-              <p className="mt-0.5 text-xl font-semibold">{compact(retentions)}</p>
-              <p className="text-xs text-[#5B6673]">
-                {retentionProjects > 0
+        <Card
+          title="Bani și situații"
+          subtitle="Ce e facturat și neîncasat, ce e reținut și ce urmează"
+        >
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <MiniStat
+              label="Facturat, neîncasat"
+              value={compact(outstanding)}
+              note={avgAge !== null ? `în medie de ${zile(avgAge)}` : 'fără date de facturare'}
+            />
+            <MiniStat
+              label="Garanții reținute"
+              value={compact(retentions)}
+              note={
+                retentionProjects > 0
                   ? `pe ${retentionProjects} ${retentionProjects === 1 ? 'proiect' : 'proiecte'}`
-                  : 'niciun procent setat'}
-              </p>
-            </div>
-            <div>
-              <p className="text-sm text-[#5B6673]">Următoarea facturare</p>
-              <p className="mt-0.5 text-xl font-semibold">
-                {nextInvoice ? dataRo(nextInvoice.date) : '—'}
-              </p>
-              <p className="truncate text-xs text-[#5B6673]">
-                {nextInvoice ? nextInvoice.label : 'nicio țintă planificată'}
-              </p>
-            </div>
+                  : 'niciun procent setat'
+              }
+            />
+            <MiniStat
+              label="Următoarea facturare"
+              value={nextInvoice ? dataRo(nextInvoice.date) : DASH}
+              note={nextInvoice ? nextInvoice.label : 'nicio țintă planificată'}
+            />
           </div>
         </Card>
       </div>

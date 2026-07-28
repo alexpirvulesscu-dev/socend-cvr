@@ -82,9 +82,9 @@ export function InlineEdit({
             setEditing(true)
           }
         }}
-        className={`cursor-text rounded-md px-1 -mx-1 transition-colors hover:bg-[#EEECE7] focus:bg-[#EEECE7] focus:outline-none ${className}`}
+        className={`-mx-1 cursor-text rounded-chip px-1 transition-colors duration-[120ms] ease-std hover:bg-segment ${className}`}
       >
-        {display ?? (value || <span className="text-[#C9C5BC]">{placeholder ?? '—'}</span>)}
+        {display ?? (value || <span className="text-ink-4">{placeholder ?? '–'}</span>)}
       </span>
     )
   }
@@ -109,7 +109,7 @@ export function InlineEdit({
           cancel()
         }
       }}
-      className={`rounded-md border border-[#58A834] bg-white px-1 -mx-1 text-inherit outline-none ${inputClassName}`}
+      className={`-mx-1 rounded-chip border border-accent bg-paper-0 px-1 text-inherit ${inputClassName}`}
     />
   )
 }

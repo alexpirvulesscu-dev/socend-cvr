@@ -1,11 +1,13 @@
 // Ecranul Gantt — DOAR diagrama, pe tot ecranul. Filtrul de proiect e propriu
 // (independent de selecția din Explorer), ca planificarea timeline-ului să fie
 // o activitate separată de editarea zilnică a proiectelor.
+// Antetul ține titlul; fereastra vizibilă și zoom-ul stau în bara de comandă a
+// graficului, pentru că ele se calculează din rândurile afișate.
 import { useState } from 'react'
 import type { EntityPatch, ProjectWithKpis } from '../data/projects'
 import { todayIso } from '../data/projects'
 import { GanttChart } from '../components/gantt/GanttChart'
-import { PageHeader, lunaCurenta } from '../components/Shell'
+import { PageHeader } from '../components/Shell'
 
 export function GanttView({
   projects,
@@ -19,11 +21,10 @@ export function GanttView({
   return (
     <div className="mx-auto max-w-[1800px] px-8 py-6">
       <PageHeader
-        title="Gantt"
-        pill={lunaCurenta(todayIso())}
+        title="Program"
         subtitle="Trage barele ca să muți sau să întinzi joburile și taskurile."
       />
-      <div style={{ height: 'calc(100vh - 190px)', minHeight: 460 }}>
+      <div style={{ height: 'calc(100vh - 190px)', minHeight: 520 }}>
         <GanttChart
           projects={projects}
           focusProjectId={focusProjectId}

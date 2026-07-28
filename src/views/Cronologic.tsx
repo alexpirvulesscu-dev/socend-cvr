@@ -5,9 +5,9 @@
 import { useMemo, useState } from 'react'
 import type { JobWithKpis } from '../data/projects'
 import { useMonthData } from '../data/cronologic'
-import { num, pct } from '../lib/format'
-import { BackLink, Card } from '../components/ui'
-import { SERIF } from '../components/Shell'
+import { DASH, num, pct } from '../lib/format'
+import { BackLink, ErrorStrip, StatCard } from '../components/ui'
+import { PageHeader } from '../components/Shell'
 
 const MONTHS_RO = [
   'ianuarie', 'februarie', 'martie', 'aprilie', 'mai', 'iunie',
@@ -19,22 +19,34 @@ function iso(year: number, month: number, day: number): string {
   return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 }
 
-function LegendDot({ color, label }: { color: string; label: string }) {
+/** Bulina de legendă — culoarea vine din tokeni, niciodată dintr-un hex. */
+function LegendDot({ dot, label }: { dot: string; label: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5 text-xs text-[#5B6673]">
-      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
+    <span className="inline-flex items-center gap-1.5 text-sub text-ink-3">
+      <span aria-hidden className={`h-2 w-2 rounded-full ${dot}`} />
       {label}
     </span>
   )
 }
 
-function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
+/** Săgețile de lună: aceeași formă ca butonul fantomă, dar rotundă. */
+function MonthArrow({
+  label,
+  onClick,
+  children,
+}: {
+  label: string
+  onClick: () => void
+  children: React.ReactNode
+}) {
   return (
-    <Card className="space-y-0.5 !p-4">
-      <p className="text-[11px] font-semibold uppercase tracking-wider text-[#5B6673]">{label}</p>
-      <p className="text-xl font-semibold tracking-tight">{value}</p>
-      {hint && <p className="text-xs text-[#5B6673]">{hint}</p>}
-    </Card>
+    <button
+      onClick={onClick}
+      aria-label={label}
+      className="flex h-8 w-8 items-center justify-center rounded-full border border-line-3 bg-paper-0 text-row font-semibold text-ink-2 transition-colors duration-[120ms] ease-std hover:bg-paper-1"
+    >
+      {children}
+    </button>
   )
 }
 
@@ -111,219 +123,226 @@ export function CronologicView({
     }
   }, [data, job, deliverableIds])
 
-  // stiluri de celulă — compacte, ca totul să încapă pe lățimea paginii
-  const dayCell = 'h-8 px-0 text-center text-[11px] tabular-nums'
-  const qtyCell = `${dayCell} bg-[#DDEDDC] font-medium text-[#2F6B1F]`
-  const workersCell = `${dayCell} bg-[#E3EDF3] text-[#115468]`
-  const emptyCell = `${dayCell} text-[#D8D4CB]`
-  const totalCell = 'px-1 text-center text-xs font-semibold tabular-nums'
-  const totalMuted = 'px-1 text-center text-xs tabular-nums text-[#5B6673]'
+  // Stiluri de celulă — compacte, ca totul să încapă pe lățimea paginii.
+  // Cantitatea e verde (muncă raportată), oamenii sunt informativi (vin din
+  // Pontaj, nu sunt un verdict), sâmbăta e doar o bandă de hârtie, iar zilele
+  // fără date rămân decor (ink-4).
+  const dayCell = 'h-8 px-0 text-center text-meta tabular-nums'
+  const qtyCell = `${dayCell} bg-pos-bg font-semibold text-pos-pill`
+  const workersCell = `${dayCell} bg-info-bg font-semibold text-info`
+  const emptyCell = `${dayCell} text-ink-4`
+  const saturdayCell = `${dayCell} bg-paper-1 text-ink-4`
+  const totalCell = 'px-1 text-center text-row font-semibold tabular-nums text-ink-1'
+  const totalMuted = 'px-1 text-center text-row tabular-nums text-ink-3'
+  const totalTh =
+    'px-1 text-center text-th font-semibold uppercase tracking-[0.07em] text-ink-3'
 
   return (
-    <div className="w-full space-y-4 px-8 py-6">
-      <BackLink label={job.name} onClick={onBack} />
-
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-3xl leading-none tracking-tight" style={{ fontFamily: SERIF }}>
-            Vedere cronologică
-          </h1>
-          <p className="mt-1.5 text-sm text-[#5B6673]">
-            {job.name} · cantități raportate pe zile · oamenii vin din Pontaj
-          </p>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="hidden items-center gap-3 sm:flex">
-            <LegendDot color="#58A834" label="cantitate" />
-            <LegendDot color="#9DB8C7" label="oameni" />
-            <LegendDot color="#E2E04A" label="sâmbătă" />
+    <div className="w-full px-8 py-6">
+      <PageHeader
+        title="Vedere cronologică"
+        back={<BackLink label={job.name} onClick={onBack} />}
+        subtitle={`${job.name} · cantități raportate pe zile · oamenii vin din Pontaj`}
+        action={
+          <div className="flex items-center gap-4">
+            <div className="hidden items-center gap-3 sm:flex">
+              <LegendDot dot="bg-pos-fill" label="cantitate" />
+              <LegendDot dot="bg-info-fill" label="oameni" />
+              <LegendDot dot="bg-line-3" label="sâmbătă" />
+            </div>
+            <div className="flex items-center gap-1">
+              <MonthArrow label="Luna anterioară" onClick={() => shiftMonth(-1)}>
+                ‹
+              </MonthArrow>
+              <span className="min-w-40 text-center text-row font-semibold uppercase tracking-[0.07em] text-ink-2">
+                Luna {MONTHS_RO[month]} {year}
+              </span>
+              <MonthArrow label="Luna următoare" onClick={() => shiftMonth(1)}>
+                ›
+              </MonthArrow>
+            </div>
           </div>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => shiftMonth(-1)}
-              aria-label="Luna anterioară"
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-white shadow-[0_1px_2px_rgba(13,26,45,0.08)] hover:bg-[#EEECE7]"
-            >
-              ‹
-            </button>
-            <span className="min-w-40 text-center text-sm font-semibold uppercase tracking-wider">
-              Luna {MONTHS_RO[month]} {year}
-            </span>
-            <button
-              onClick={() => shiftMonth(1)}
-              aria-label="Luna următoare"
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-white shadow-[0_1px_2px_rgba(13,26,45,0.08)] hover:bg-[#EEECE7]"
-            >
-              ›
-            </button>
+        }
+      />
+
+      <div className="space-y-4">
+        {error && <ErrorStrip message={`Eroare: ${error}`} />}
+        {loading && <p className="text-row text-ink-3">Se încarcă…</p>}
+
+        {/* Banda de indicatori — numerele de decizie ale lunii */}
+        {stats && (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            <StatCard
+              label="Oameni-zile · luna asta"
+              value={num(stats.manDaysMonth)}
+              footnote="suma oamenilor din Pontaj, zi cu zi"
+            />
+            <StatCard
+              label="Oameni-zile · de la început"
+              value={num(stats.manDaysAll)}
+              footnote="pe tot jobul, toate lunile"
+            />
+            <StatCard
+              label="Zile active · luna asta"
+              value={num(stats.activeDays)}
+              footnote="zile cu oameni sau cantități raportate"
+            />
+            <StatCard
+              label="Medie oameni / zi activă"
+              value={num(stats.avgPerDay, 1)}
+              footnote="oameni-zile ÷ zile active"
+            />
+            <StatCard
+              label="Livrabile lucrate · luna asta"
+              value={`${num(stats.activeDeliverables)} din ${num(stats.totalDeliverables)}`}
+              footnote="livrabile cu cantități raportate"
+            />
           </div>
-        </div>
-      </div>
+        )}
 
-      {error && <p className="text-sm text-[#D64545]">Eroare: {error}</p>}
-      {loading && <p className="text-sm text-[#5B6673]">Se încarcă…</p>}
-
-      {/* Banda de indicatori — numerele de decizie ale lunii */}
-      {stats && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-          <Stat
-            label="Oameni-zile · luna asta"
-            value={num(stats.manDaysMonth)}
-            hint="suma oamenilor din Pontaj, zi cu zi"
-          />
-          <Stat
-            label="Oameni-zile · de la început"
-            value={num(stats.manDaysAll)}
-            hint="pe tot jobul, toate lunile"
-          />
-          <Stat
-            label="Zile active · luna asta"
-            value={num(stats.activeDays)}
-            hint="zile cu oameni sau cantități raportate"
-          />
-          <Stat
-            label="Medie oameni / zi activă"
-            value={num(stats.avgPerDay, 1)}
-            hint="oameni-zile ÷ zile active"
-          />
-          <Stat
-            label="Livrabile lucrate · luna asta"
-            value={`${num(stats.activeDeliverables)} din ${num(stats.totalDeliverables)}`}
-            hint="livrabile cu cantități raportate"
-          />
-        </div>
-      )}
-
-      {data && (
-        <div className="overflow-x-auto rounded-[20px] bg-white shadow-[0_1px_2px_rgba(13,26,45,0.04),0_8px_24px_rgba(13,26,45,0.06)]">
-          {/* min-w: sub ~1080px tabelul derulează; peste, umple TOATĂ lățimea paginii */}
-          <table className="w-full min-w-[1080px] table-fixed border-collapse">
-            <colgroup>
-              <col className="w-44" />
-              {days.map(({ d }) => (
-                <col key={d} />
-              ))}
-              <col className="w-14" />
-              <col className="w-16" />
-              <col className="w-14" />
-              <col className="w-14" />
-              <col className="w-12" />
-            </colgroup>
-            <thead>
-              <tr>
-                <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-[#5B6673]">
-                  Task / livrabil
-                </th>
-                {days.map(({ d, dow }) => (
-                  <th key={d} className={`${dayCell} py-1.5 font-medium ${dow === 0 ? 'text-[#C9C5BC]' : ''}`}>
-                    <span className="block text-xs font-semibold">{d}</span>
-                    <span
-                      className={`block text-[9px] ${
-                        dow === 6 ? 'text-[#A87400]' : dow === 0 ? 'text-[#C9C5BC]' : 'text-[#5B6673]'
-                      }`}
-                    >
-                      {WEEKDAY_RO[dow]}
-                    </span>
-                  </th>
+        {data && (
+          <div className="overflow-x-auto rounded-card border border-line-2 bg-paper-0 shadow-e1">
+            {/* min-w: sub ~1080px tabelul derulează; peste, umple TOATĂ lățimea paginii */}
+            <table className="w-full min-w-[1080px] table-fixed border-collapse">
+              <colgroup>
+                <col className="w-44" />
+                {days.map(({ d }) => (
+                  <col key={d} />
                 ))}
-                <th className="border-l border-[#E8E8E8] px-1 text-center text-[10px] font-semibold uppercase tracking-wide text-[#5B6673]">
-                  Lună
-                </th>
-                <th className="px-1 text-center text-[10px] font-semibold uppercase tracking-wide text-[#5B6673]">
-                  Realizat
-                </th>
-                <th className="px-1 text-center text-[10px] font-semibold uppercase tracking-wide text-[#5B6673]">
-                  Total
-                </th>
-                <th className="px-1 text-center text-[10px] font-semibold uppercase tracking-wide text-[#5B6673]">
-                  Rămas
-                </th>
-                <th className="px-1 text-center text-[10px] font-semibold uppercase tracking-wide text-[#5B6673]">
-                  %
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {job.tasks.map((t, ti) => {
-                const workersByDay = data.workers[t.id] ?? {}
-                const workersMonth = days.reduce((s, { date }) => s + (workersByDay[date] ?? 0), 0)
-                const workersAll = data.allTimeWorkers[t.id] ?? 0
-                return (
-                  <FragmentRows
-                    key={t.id}
-                    taskLabel={`${String(ti + 1).padStart(2, '0')} · ${t.name}`}
-                    colSpan={days.length + 6}
-                    rows={
-                      <>
-                        {t.deliverables.map((dl) => {
-                          const byDay = data.qty[dl.id] ?? {}
-                          const monthTotal = days.reduce((s, { date }) => s + (byDay[date] ?? 0), 0)
-                          const done = Number(dl.qty_done)
-                          const total = Number(dl.qty_total)
-                          const remaining = Math.max(0, total - done)
-                          return (
-                            <tr key={dl.id} className="border-t border-[#F3F1EC]">
-                              <td className="truncate px-3 py-1 text-xs">
-                                {dl.name} <span className="text-[10px] text-[#5B6673]">{dl.um}</span>
-                              </td>
-                              {days.map(({ date, dow }) => {
-                                const v = byDay[date]
-                                return (
-                                  <td key={date} className={v ? qtyCell : emptyCell}>
-                                    {v ? num(v) : dow === 0 ? '' : '–'}
-                                  </td>
-                                )
-                              })}
-                              <td className={`border-l border-[#E8E8E8] ${totalCell}`}>
-                                {monthTotal > 0 ? num(monthTotal) : '–'}
-                              </td>
-                              <td className={`${totalCell} text-[#2F6B1F]`}>{num(done)}</td>
-                              <td className={totalMuted}>{num(total)}</td>
-                              <td className={totalMuted}>{num(remaining)}</td>
-                              <td className={totalMuted}>
-                                {total > 0 ? pct(done / total, 0) : '–'}
-                              </td>
-                            </tr>
-                          )
-                        })}
-                        <tr className="border-t border-[#F3F1EC]">
-                          <td className="truncate px-3 py-1 text-xs text-[#115468]">
-                            Oameni · Pontaj
-                          </td>
-                          {days.map(({ date, dow }) => {
-                            const v = workersByDay[date]
+                <col className="w-14" />
+                <col className="w-16" />
+                <col className="w-14" />
+                <col className="w-14" />
+                <col className="w-12" />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th className="px-3 py-2 text-left text-th font-semibold uppercase tracking-[0.07em] text-ink-3">
+                    Task / livrabil
+                  </th>
+                  {days.map(({ d, dow }) => (
+                    <th
+                      key={d}
+                      className={`${dayCell} py-1.5 ${dow === 6 ? 'bg-paper-1' : ''}`}
+                    >
+                      <span
+                        className={`block text-row font-semibold ${
+                          dow === 0 ? 'text-ink-4' : 'text-ink-2'
+                        }`}
+                      >
+                        {d}
+                      </span>
+                      <span
+                        className={`block text-meta font-medium ${
+                          dow === 0 ? 'text-ink-4' : 'text-ink-3'
+                        }`}
+                      >
+                        {WEEKDAY_RO[dow]}
+                      </span>
+                    </th>
+                  ))}
+                  <th className={`${totalTh}`}>Lună</th>
+                  <th className={totalTh}>Realizat</th>
+                  <th className={totalTh}>Total</th>
+                  <th className={totalTh}>Rămas</th>
+                  <th className={totalTh}>%</th>
+                </tr>
+              </thead>
+              <tbody>
+                {job.tasks.map((t, ti) => {
+                  const workersByDay = data.workers[t.id] ?? {}
+                  const workersMonth = days.reduce((s, { date }) => s + (workersByDay[date] ?? 0), 0)
+                  const workersAll = data.allTimeWorkers[t.id] ?? 0
+                  return (
+                    <FragmentRows
+                      key={t.id}
+                      taskLabel={`${String(ti + 1).padStart(2, '0')} · ${t.name}`}
+                      colSpan={days.length + 6}
+                      rows={
+                        <>
+                          {t.deliverables.map((dl) => {
+                            const byDay = data.qty[dl.id] ?? {}
+                            const monthTotal = days.reduce((s, { date }) => s + (byDay[date] ?? 0), 0)
+                            const done = Number(dl.qty_done)
+                            const total = Number(dl.qty_total)
+                            const remaining = Math.max(0, total - done)
                             return (
-                              <td key={date} className={v ? workersCell : emptyCell}>
-                                {v ? num(v) : dow === 0 ? '' : '–'}
-                              </td>
+                              <tr key={dl.id} className="border-t border-line-1">
+                                <td className="truncate px-3 py-1 text-row text-ink-1">
+                                  {dl.name} <span className="text-meta text-ink-4">{dl.um}</span>
+                                </td>
+                                {days.map(({ date, dow }) => {
+                                  const v = byDay[date]
+                                  return (
+                                    <td
+                                      key={date}
+                                      className={
+                                        v ? qtyCell : dow === 6 ? saturdayCell : emptyCell
+                                      }
+                                    >
+                                      {v ? num(v) : dow === 0 ? '' : DASH}
+                                    </td>
+                                  )
+                                })}
+                                <td className={`${totalCell}`}>
+                                  {monthTotal > 0 ? num(monthTotal) : DASH}
+                                </td>
+                                <td className={`${totalCell} text-pos-pill`}>{num(done)}</td>
+                                <td className={totalMuted}>{num(total)}</td>
+                                <td className={totalMuted}>{num(remaining)}</td>
+                                <td className={totalMuted}>
+                                  {total > 0 ? pct(done / total) : DASH}
+                                </td>
+                              </tr>
                             )
                           })}
-                          <td className={`border-l border-[#E8E8E8] ${totalCell} text-[#115468]`}>
-                            {workersMonth > 0 ? num(workersMonth) : '–'}
-                          </td>
-                          <td className={`${totalCell} text-[#115468]`}>
-                            {workersAll > 0 ? num(workersAll) : '–'}
-                          </td>
-                          <td className={totalMuted}>–</td>
-                          <td className={totalMuted}>–</td>
-                          <td className={totalMuted}>–</td>
-                        </tr>
-                      </>
-                    }
-                  />
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+                          <tr className="border-t border-line-1">
+                            <td className="truncate px-3 py-1 text-row text-info">
+                              Oameni · Pontaj
+                            </td>
+                            {days.map(({ date, dow }) => {
+                              const v = workersByDay[date]
+                              return (
+                                <td
+                                  key={date}
+                                  className={
+                                    v ? workersCell : dow === 6 ? saturdayCell : emptyCell
+                                  }
+                                >
+                                  {v ? num(v) : dow === 0 ? '' : DASH}
+                                </td>
+                              )
+                            })}
+                            <td className={`${totalCell} text-info`}>
+                              {workersMonth > 0 ? num(workersMonth) : DASH}
+                            </td>
+                            <td className={`${totalCell} text-info`}>
+                              {workersAll > 0 ? num(workersAll) : DASH}
+                            </td>
+                            <td className={totalMuted}>{DASH}</td>
+                            <td className={totalMuted}>{DASH}</td>
+                            <td className={totalMuted}>{DASH}</td>
+                          </tr>
+                        </>
+                      }
+                    />
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
 
-      <p className="text-xs text-[#5B6673]">
-        Coloanele de totaluri: <strong>Lună</strong> = raportat în luna afișată ·{' '}
-        <strong>Realizat</strong> = de la începutul jobului (la „Oameni": total oameni-zile) ·{' '}
-        <strong>Total</strong> = cantitatea contractată · <strong>Rămas</strong> = de construit ·{' '}
-        <strong>%</strong> = realizat din total.
-      </p>
+        <p className="text-sub text-ink-3">
+          Coloanele de totaluri: <strong className="font-semibold text-ink-2">Lună</strong> ={' '}
+          raportat în luna afișată ·{' '}
+          <strong className="font-semibold text-ink-2">Realizat</strong> = de la începutul jobului
+          (la „Oameni": total oameni-zile) ·{' '}
+          <strong className="font-semibold text-ink-2">Total</strong> = cantitatea contractată ·{' '}
+          <strong className="font-semibold text-ink-2">Rămas</strong> = de construit ·{' '}
+          <strong className="font-semibold text-ink-2">%</strong> = realizat din total.
+        </p>
+      </div>
     </div>
   )
 }
@@ -343,7 +362,7 @@ function FragmentRows({
       <tr>
         <td
           colSpan={colSpan}
-          className="border-t border-[#E8E8E8] bg-[#FAF9F6] px-3 py-1.5 text-sm font-semibold"
+          className="border-t border-line-2 bg-paper-1 px-3 py-1.5 text-row font-semibold text-ink-1"
         >
           {taskLabel}
         </td>

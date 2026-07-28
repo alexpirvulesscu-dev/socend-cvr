@@ -1,15 +1,173 @@
 @import "tailwindcss";
 
-/* Fundalul aplicației și fontul de bază — vezi src/design/tokens.ts */
-:root {
-  font-family: Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
-    Roboto, sans-serif;
+/* ─────────────────────────────────────────────────────────────────────────
+   CLEAN LEDGER · sistemul de design al aplicației
+   Sursa unică de adevăr pentru culori, fonturi, colțuri, umbre și mișcare.
+   REGULA: niciun hex scris direct într-o componentă. Totul trece prin
+   utilitarele generate aici (bg-paper-1, text-ink-2, border-line-2, ...).
+   Oglinda în JavaScript (pentru grafice) e în src/design/tokens.ts și
+   TREBUIE ținută identică cu valorile de mai jos.
+   ───────────────────────────────────────────────────────────────────────── */
+@theme {
+  /* ── Praguri responsive ──
+     Le declarăm în px, cu numele standard, din DOUĂ motive:
+     1. sunt exact pragurile din DESIGN.md (900px = bara laterală devine sertar,
+        1120px = grilele trec pe o coloană);
+     2. dacă amesteci pragurile numite (implicit în rem) cu variante arbitrare
+        (min-[1120px]) Tailwind le scrie în CSS în grupuri separate, iar cele în
+        rem ajung ULTIMELE — așa că `sm:grid-cols-2` bătea `lg:grid-cols-3`
+        pe ecran lat. Cu toate pragurile în px, ordinea e din nou crescătoare.
+     Regulă: în componente se folosesc DOAR xs/sm/md/lg/xl, niciodată min-[...]. */
+  --breakpoint-xs: 480px;
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 900px;
+  --breakpoint-lg: 1120px;
+  --breakpoint-xl: 1400px;
+  --breakpoint-2xl: 1600px;
+
+  /* ── Fonturi ── */
+  --font-sans:
+    "Instrument Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-serif: "Instrument Serif", Georgia, "Times New Roman", serif;
+
+  /* ── Suprafețe (o singură nuanță caldă de hârtie) ── */
+  --color-paper-2: #f6f5ef; /* fundalul aplicației */
+  --color-paper-1: #fbfaf5; /* benzi discrete, subsol de tabel, rând la hover */
+  --color-paper-0: #ffffff; /* carduri, bara laterală */
+
+  /* ── Linii ── */
+  --color-line-1: #f0efe8; /* separator între rânduri */
+  --color-line-2: #e5e4da; /* contur de card, input */
+  --color-line-3: #d8d7cc; /* contur puternic, buton fantomă */
+
+  /* ── Text (contrast verificat pe alb) ── */
+  --color-ink-1: #16181c; /* principal, ~15:1 */
+  --color-ink-2: #43463f; /* secundar, ~9:1 */
+  --color-ink-3: #6b6e63; /* etichete, ~4,9:1 — minimul pentru text cu informație */
+  --color-ink-4: #9c9e92; /* DOAR decor (marcaje de timp, „· 3 bucăți") */
+
+  /* ── Accentul (singura culoare de brand) ── */
+  --color-accent: #157a55;
+  --color-accent-hover: #116a4a;
+  --color-accent-active: #0e5a3f;
+  --color-accent-ink: #0f5c41;
+  --color-accent-soft: #eaf2ec;
+  --color-focus-ring: rgba(21, 122, 85, 0.45);
+
+  /* ── Semantice ── */
+  /* pozitiv: bani câștigați, aprobat, conform planului */
+  --color-pos: #178a50;
+  --color-pos-fill: #2e9e6b;
+  --color-pos-bg: #e7f2ea;
+  --color-pos-pill: #146c43;
+  /* atenție: în așteptare, de urmărit, în urmă */
+  --color-warn: #a8720f;
+  --color-warn-fill: #e0a63b;
+  --color-warn-bg: #fbf1dc;
+  --color-warn-pill: #96660b;
+  --color-warn-soft: #efcf8c; /* segmentul „în urmă" din barele Gantt */
+  /* negativ: pierdem bani, respins, depășit */
+  --color-neg: #c2413b;
+  --color-neg-fill: #d65b4f;
+  --color-neg-bg: #fbe9e7;
+  --color-neg-pill: #b03a2e;
+  /* informativ */
+  --color-info: #2c5a82;
+  --color-info-fill: #4c8fd6;
+  --color-info-bg: #e9f0f6;
+
+  /* ── Grafice ── */
+  --color-chart-ink: #43463f; /* linia de cost */
+  --color-cat-1: #2e9e6b; /* Materiale */
+  --color-cat-2: #47698f; /* Manoperă */
+  --color-cat-3: #5fa8a0; /* Subcontractori */
+  --color-cat-4: #d9a441; /* Utilaje */
+  --color-cat-5: #a8aa9c; /* Organizare */
+  --color-grid: #f2f1ea;
+
+  /* ── Controale ── */
+  --color-track: #eeede5; /* bara goală */
+  --color-tick: #acaea1; /* reperul de plan */
+  --color-progress-neutral: #8fbca3; /* procent realizat, fără verdict */
+  --color-segment: #efeee6; /* fundalul controlului segmentat */
+  --color-scrim: rgba(22, 24, 28, 0.35); /* voalul de sub modale și sertar */
+
+  /* ── Colțuri ── */
+  --radius-chip: 8px;
+  --radius-btn: 10px;
+  --radius-card: 16px;
+
+  /* ── Umbre (niciodată colorate) ── */
+  --shadow-e1: 0 1px 2px rgba(20, 20, 10, 0.04), 0 10px 30px rgba(20, 20, 10, 0.05);
+  --shadow-e2: 0 4px 12px rgba(20, 20, 10, 0.08), 0 16px 40px rgba(20, 20, 10, 0.1);
+  --shadow-seg: 0 1px 3px rgba(20, 20, 10, 0.12);
+
+  /* ── Scara tipografică (vezi DESIGN.md) ── */
+  --text-meta: 10.5px;
+  --text-th: 10.5px;
+  --text-pill: 11px;
+  --text-sub: 11.5px;
+  --text-nav: 13px;
+  --text-row: 12.5px;
+  --text-card: 13.5px;
+  --text-stat-sm: 21px;
+  --text-stat: 28px;
+
+  /* ── Mișcare ── */
+  --ease-std: cubic-bezier(0.2, 0.7, 0.3, 1);
 }
 
-body {
-  background-color: #faf9f6;
-  color: #0d1a2d;
-  -webkit-font-smoothing: antialiased;
-  /* Cifre tabulare peste tot: numerele se aliniază vertical în liste și KPI-uri */
-  font-variant-numeric: tabular-nums;
+@layer base {
+  html {
+    font-family: var(--font-sans);
+  }
+
+  body {
+    background-color: var(--color-paper-2);
+    color: var(--color-ink-1);
+    -webkit-font-smoothing: antialiased;
+    /* cifre tabulare peste tot: numerele se aliniază vertical în liste și tabele */
+    font-variant-numeric: tabular-nums;
+    font-size: 13px;
+  }
+
+  /* Focusul se vede întotdeauna la navigarea cu tastatura */
+  :focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 2px;
+  }
+
+  /* Titlurile de pagină sunt singurul loc cu serif */
+  h1 {
+    font-family: var(--font-serif);
+    font-weight: 400;
+    letter-spacing: -0.01em;
+  }
+}
+
+/* Scheletele de încărcare: bloc line-1 care pulsează spre paper-1 */
+@keyframes cl-shimmer {
+  0%,
+  100% {
+    background-color: var(--color-line-1);
+  }
+  50% {
+    background-color: var(--color-paper-1);
+  }
+}
+
+.cl-skeleton {
+  animation: cl-shimmer 1.4s var(--ease-std) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cl-skeleton {
+    animation: none;
+  }
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
 }
