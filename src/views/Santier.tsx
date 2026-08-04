@@ -1,11 +1,12 @@
 // Ecranele de șantier (mobile first, pentru Mihai):
-//  1. „Azi" — header teal (#115468, cerut la review), comutator de proiect,
+//  1. „Azi" — bandă de zi verde (accentul sistemului), comutator de proiect,
 //     „Pontaj spune", un card pe task cu manoperă azi, „Închide ziua".
 //  2. „Ce s-a construit azi" — un rând pe livrabil cu steppere de 52px,
 //     „Salvează ziua" → RPC atomic → „Zi închisă ✓".
 //  3. „Progres" — toată ierarhia (proiect → job → task → livrabil), FĂRĂ bani:
 //     unde suntem, ținta la zi și totalul, pentru fiecare livrabil.
-import { useMemo, useState } from 'react'
+// Regula ecranului: nicio sumă, niciun nume de om, doar taskurile cu manoperă azi.
+import { useMemo, useState, type ReactNode } from 'react'
 import {
   closeDay,
   type LabourTask,
@@ -17,9 +18,20 @@ import {
 import { deliverablePct, planPct as planPctFn, projectKpis, taskPct } from '../domain/kpi'
 import { num, pct, ziuaDeAzi as azi } from '../lib/format'
 import { todayIso } from '../data/projects'
-import { Card, ProgressBar, StatusPill } from '../components/ui'
+import {
+  Card,
+  EmptyState,
+  ErrorStrip,
+  GhostButton,
+  PrimaryButton,
+  ProgressBar,
+  SegmentedControl,
+  Skeleton,
+  StatusPill,
+} from '../components/ui'
 
-const HEADER_BG = 'bg-[#115468]'
+/** Ținta de atingere de 40px, plus butoane pline pe toată lățimea pe telefon. */
+const SEG_ON_PHONE = 'w-full [&>button]:min-h-10 [&>button]:flex-1'
 
 /** „mai sunt 38 m" — restul de construit, cu zecimale doar când există. */
 function remaining(left: number, um: string): string {
@@ -43,91 +55,67 @@ function projectProgress(p: ProgressProject, today: string) {
       })),
     })),
   }))
-  const k = projectKpis(jobs, { depus: 0, certificat: 0, facturat: 0, incasat: 0 }, today)
+  // șantierul nu vede bani: din KPI-uri folosim doar progresul fizic și planul
+  const k = projectKpis(jobs, today)
   return { donePct: k.donePct, planPct: k.planPct }
 }
 
-// ── Header-ul de zi (teal, singurul loc cu accentul galben) ───────────────
-function DayHeader({
-  projectNames,
-  selected,
-  onSelect,
-  progress,
+// ── Banda de zi ───────────────────────────────────────────────────────────
+// Singura suprafață plină de accent din aplicație: verde, text alb, data cu
+// serif (h1 îl ia automat), supratitlul într-un alb translucid.
+function DayBand({
+  caption,
+  title,
+  back,
+  children,
 }: {
-  projectNames: string[]
-  selected: string | null
-  onSelect: (name: string) => void
-  progress: { donePct: number; planPct: number } | null
+  caption?: string
+  title: string
+  /** înlocuiește supratitlul cu o întoarcere, în ecranul de raportare */
+  back?: ReactNode
+  children?: ReactNode
 }) {
   return (
-    <div className={`${HEADER_BG} px-4 pb-5 pt-5 text-white`}>
+    <div className="bg-accent px-4 pb-6 pt-6 text-paper-0">
       <div className="mx-auto max-w-lg">
-        <p className="text-sm text-white/60">Șantier · raport zilnic</p>
-        <h1 className="mt-1 text-2xl font-semibold">{azi()}</h1>
-
-        {projectNames.length > 0 && (
-          <div className="mt-4 flex gap-2 overflow-x-auto">
-            {projectNames.map((name) => (
-              <button
-                key={name}
-                onClick={() => onSelect(name)}
-                className={`shrink-0 rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
-                  name === selected
-                    ? 'bg-[#E2E04A] text-[#0D1A2D]'
-                    : 'bg-white/10 text-white hover:bg-white/20'
-                }`}
-              >
-                {name.split(' ').slice(0, 2).join(' ')}
-              </button>
-            ))}
-          </div>
+        {back ?? (
+          <p className="text-sub font-medium uppercase tracking-[0.07em] text-paper-0/70">
+            {caption}
+          </p>
         )}
-
-        {progress && selected && (
-          <div className="mt-4">
-            <div className="flex items-baseline justify-between text-sm">
-              <span className="truncate">{selected}</span>
-              <span className="shrink-0 font-semibold">
-                {pct(progress.donePct)} · plan {pct(progress.planPct, 0)}
-              </span>
-            </div>
-            <div className="relative mt-2 h-2 rounded-full bg-white/20">
-              <div
-                className="h-2 rounded-full bg-[#E2E04A]"
-                style={{ width: `${Math.min(progress.donePct, 1) * 100}%` }}
-              />
-              <div
-                className="absolute -top-1 h-4 w-0.5 rounded bg-white"
-                style={{ left: `calc(${Math.min(progress.planPct, 1) * 100}% - 1px)` }}
-              />
-            </div>
-          </div>
-        )}
+        <h1 className="mt-1.5 text-[clamp(24px,2.2vw,31px)] leading-none text-paper-0">{title}</h1>
+        {children}
       </div>
     </div>
   )
 }
 
-/** Comutatorul Azi / Progres. */
-function ScreenToggle({
-  screen,
-  onScreen,
+/** Comutatorul de proiect din bandă — pastile albe pe verde, 40px înălțime. */
+function ProjectChips({
+  projectNames,
+  selected,
+  onSelect,
 }: {
-  screen: 'day' | 'progress'
-  onScreen: (s: 'day' | 'progress') => void
+  projectNames: string[]
+  selected: string | null
+  onSelect: (name: string) => void
 }) {
-  const seg = (active: boolean) =>
-    `flex-1 rounded-full px-4 py-2 text-sm font-medium transition-colors ${
-      active ? 'bg-white text-[#0D1A2D] shadow-[0_1px_2px_rgba(13,26,45,0.1)]' : 'text-[#5B6673]'
-    }`
   return (
-    <div className="mx-auto mt-4 flex max-w-lg gap-1 rounded-full bg-[#EEECE7] p-1">
-      <button className={seg(screen === 'day')} onClick={() => onScreen('day')}>
-        Azi
-      </button>
-      <button className={seg(screen === 'progress')} onClick={() => onScreen('progress')}>
-        Progres
-      </button>
+    <div className="mt-5 flex gap-2 overflow-x-auto pb-0.5">
+      {projectNames.map((name) => (
+        <button
+          key={name}
+          onClick={() => onSelect(name)}
+          aria-pressed={name === selected}
+          className={`min-h-10 shrink-0 whitespace-nowrap rounded-full px-4 text-row font-semibold transition-colors duration-[120ms] ease-std ${
+            name === selected
+              ? 'bg-paper-0 text-accent-ink'
+              : 'bg-paper-0/15 text-paper-0 hover:bg-paper-0/25'
+          }`}
+        >
+          {name.split(' ').slice(0, 2).join(' ')}
+        </button>
+      ))}
     </div>
   )
 }
@@ -147,46 +135,44 @@ function DayView({
   return (
     <>
       {tasks.length === 0 ? (
-        <Card className="mx-auto mt-4 max-w-lg py-10 text-center">
-          <p className="font-medium">Nicio echipă pe teren azi</p>
-          <p className="mt-1 text-sm text-[#5B6673]">
-            Când Pontaj arată manoperă pe un task, el apare aici.
-          </p>
-        </Card>
+        <div className="mx-auto max-w-lg px-4 pt-4">
+          <Card className="px-0 py-0">
+            <EmptyState title="Nicio echipă pe teren azi">
+              Când Pontaj arată manoperă pe un task, el apare aici.
+            </EmptyState>
+          </Card>
+        </div>
       ) : (
-        <div className="mx-auto max-w-lg space-y-3 px-4 pb-28 pt-4">
-          <div className="rounded-2xl bg-[#E3EDF3] px-4 py-3 text-sm leading-relaxed text-[#115468]">
-            <strong>Pontaj spune:</strong> azi s-a înregistrat manoperă pe{' '}
-            {visible.length === 1 ? 'un task' : `${visible.length} taskuri`} din acest proiect.
-            Oamenii se gestionează în Pontaj, nu aici. Taskurile fără oameni azi nu sunt
+        <div className="mx-auto max-w-lg space-y-3 px-4 pb-28 pt-3">
+          <div className="rounded-chip border border-line-2 bg-paper-1 px-4 py-3 text-row leading-relaxed text-ink-2">
+            <span className="font-semibold text-ink-1">Pontaj spune:</span> azi s-a înregistrat
+            manoperă pe {visible.length === 1 ? 'un task' : `${visible.length} taskuri`} din acest
+            proiect. Oamenii se gestionează în Pontaj, nu aici. Taskurile fără oameni azi nu sunt
             întrebate.
           </div>
 
           {visible.map((t) => (
-            <Card
-              key={t.taskId}
-              onClick={onReport}
-              className="space-y-1 transition-transform duration-150 hover:translate-x-0.5"
-            >
+            <Card key={t.taskId} onClick={onReport}>
               <div className="flex items-center justify-between gap-2">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-[#5B6673]">
+                <p className="text-th font-semibold uppercase tracking-[0.07em] text-ink-3">
                   {t.jobName}
                 </p>
-                <span aria-hidden className="text-[#C9C5BC]">
+                <span aria-hidden className="text-ink-4">
                   ›
                 </span>
               </div>
-              <h2 className="font-semibold leading-tight">{t.taskName}</h2>
-              <p className="text-sm text-[#5B6673]">
+              <h2 className="mt-1 text-card font-semibold leading-tight text-ink-1">{t.taskName}</h2>
+              <p className="mt-1 text-row text-ink-3">
                 {t.workers === 1 ? 'un om azi' : `${num(t.workers)} oameni azi`} · din Pontaj
               </p>
-              <div className="space-y-0.5 pt-1">
+              <div className="mt-2 space-y-1">
                 {t.deliverables.map((d) => {
                   const left = Number(d.qty_total) - Number(d.qty_done)
                   if (left <= 0) return null
                   return (
-                    <p key={d.id} className="text-sm text-[#5B6673]">
-                      {d.name} · <strong className="text-[#0D1A2D]">{remaining(left, d.um)}</strong>
+                    <p key={d.id} className="text-row text-ink-3">
+                      {d.name} ·{' '}
+                      <span className="font-bold text-ink-1">{remaining(left, d.um)}</span>
                     </p>
                   )
                 })}
@@ -195,21 +181,19 @@ function DayView({
           ))}
 
           {visible.length === 0 && (
-            <Card className="py-8 text-center">
-              <p className="text-sm text-[#5B6673]">Niciun task cu manoperă azi pe acest proiect.</p>
+            <Card className="px-0 py-0">
+              <EmptyState title="Niciun task cu manoperă azi pe acest proiect." />
             </Card>
           )}
         </div>
       )}
 
       {visible.length > 0 && (
-        <div className="fixed inset-x-0 bottom-0 border-t border-[#E8E8E8]/60 bg-[rgba(250,249,246,0.9)] p-4 backdrop-blur-xl">
-          <button
-            onClick={onReport}
-            className="mx-auto block w-full max-w-lg rounded-2xl bg-[#58A834] py-4 text-base font-semibold text-white hover:bg-[#46862A]"
-          >
+        <div className="fixed inset-x-0 bottom-0 border-t border-line-2 bg-paper-2/90 p-4 backdrop-blur-xl">
+          {/* 52px înălțime: ținta de atingere de pe telefon, cu mănuși */}
+          <PrimaryButton onClick={onReport} className="mx-auto block min-h-13 w-full max-w-lg">
             Închide ziua · {visible.length === 1 ? 'un task' : `${visible.length} taskuri`}
-          </button>
+          </PrimaryButton>
         </div>
       )}
     </>
@@ -227,7 +211,7 @@ function Stepper({
   max: number
 }) {
   const btn =
-    'h-[52px] w-[52px] shrink-0 rounded-2xl bg-[#EEECE7] text-2xl font-semibold text-[#0D1A2D] active:bg-[#E2DFD8] disabled:opacity-30'
+    'h-13 w-13 shrink-0 rounded-btn border border-line-2 bg-paper-1 text-stat-sm font-semibold text-ink-1 transition-colors duration-[120ms] ease-std hover:bg-segment active:bg-segment disabled:cursor-not-allowed disabled:bg-paper-1 disabled:text-ink-4'
   return (
     <div className="flex items-center gap-2">
       <button
@@ -239,7 +223,9 @@ function Stepper({
       >
         −
       </button>
-      <span className="w-12 text-center text-lg font-semibold tabular-nums">{num(value)}</span>
+      <span className="w-12 text-center text-stat-sm font-bold tabular-nums text-ink-1">
+        {num(value)}
+      </span>
       <button
         type="button"
         className={btn}
@@ -286,78 +272,84 @@ function ReportView({
 
   if (saved) {
     return (
-      <div className="min-h-screen bg-[#FAF9F6] px-4 pt-16">
-        <Card className="mx-auto max-w-lg space-y-2 py-10 text-center">
-          <p className="text-4xl text-[#58A834]">✓</p>
-          <h1 className="text-xl font-semibold text-[#46862A]">Zi închisă ✓</h1>
-          <p className="text-sm text-[#5B6673]">
+      <div className="min-h-screen bg-paper-2 px-4 pt-16">
+        <Card className="mx-auto max-w-lg py-10 text-center">
+          <p aria-hidden className="text-stat leading-none text-pos">
+            ✓
+          </p>
+          <h1 className="mt-3 text-[clamp(24px,2.2vw,31px)] leading-none text-ink-1">
+            Zi închisă ✓
+          </h1>
+          <p className="mt-2 text-row text-ink-3">
             Cantitățile au fost salvate și progresul s-a actualizat.
           </p>
-          <button
-            onClick={onBack}
-            className="mx-auto mt-4 block rounded-full bg-[#EEECE7] px-6 py-3 text-sm font-medium"
-          >
-            Înapoi la zi
-          </button>
+          <div className="mt-5 flex justify-center">
+            <GhostButton onClick={onBack} className="min-h-10">
+              Înapoi la zi
+            </GhostButton>
+          </div>
         </Card>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-[#FAF9F6] pb-28">
-      <div className={`${HEADER_BG} px-4 pb-5 pt-5 text-white`}>
-        <div className="mx-auto max-w-lg">
-          <button onClick={onBack} className="text-sm text-white/60">
-            ← {azi()}
+    <div className="min-h-screen bg-paper-2 pb-28">
+      <DayBand
+        title="Ce s-a construit azi?"
+        back={
+          <button
+            onClick={onBack}
+            className="-ml-1 inline-flex min-h-10 items-center gap-1.5 rounded-btn px-1 text-row font-semibold text-paper-0/70 transition-colors duration-[120ms] ease-std hover:text-paper-0"
+          >
+            <span aria-hidden>←</span> {azi()}
           </button>
-          <h1 className="mt-1 text-2xl font-semibold">Ce s-a construit azi?</h1>
-        </div>
-      </div>
+        }
+      />
 
       <div className="mx-auto max-w-lg space-y-3 px-4 pt-4">
         {tasks.map((t) => (
-          <Card key={t.taskId} className="space-y-3">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-[#5B6673]">
-                {t.jobName}
-              </p>
-              <h2 className="font-semibold">{t.taskName}</h2>
-            </div>
-            {t.deliverables.map((d) => {
-              const left = Math.max(0, Number(d.qty_total) - Number(d.qty_done))
-              return (
-                <div
-                  key={d.id}
-                  className="flex items-center justify-between gap-3 border-t border-[#F3F1EC] pt-3"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">{d.name}</p>
-                    <p className="text-xs text-[#5B6673]">
-                      {left > 0 ? remaining(left, d.um) : 'gata ✓'}
-                    </p>
+          <Card key={t.taskId}>
+            <p className="text-th font-semibold uppercase tracking-[0.07em] text-ink-3">
+              {t.jobName}
+            </p>
+            <h2 className="mt-1 text-card font-semibold text-ink-1">{t.taskName}</h2>
+            <div className="mt-3 space-y-3">
+              {t.deliverables.map((d) => {
+                const left = Math.max(0, Number(d.qty_total) - Number(d.qty_done))
+                return (
+                  <div
+                    key={d.id}
+                    className="flex items-center justify-between gap-3 border-t border-line-1 pt-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-row font-medium text-ink-1">{d.name}</p>
+                      <p className="mt-0.5 text-sub text-ink-3">
+                        {left > 0 ? remaining(left, d.um) : 'gata ✓'}
+                      </p>
+                    </div>
+                    <Stepper
+                      value={qty[d.id] ?? 0}
+                      max={left}
+                      onChange={(v) => setQty((old) => ({ ...old, [d.id]: v }))}
+                    />
                   </div>
-                  <Stepper
-                    value={qty[d.id] ?? 0}
-                    max={left}
-                    onChange={(v) => setQty((old) => ({ ...old, [d.id]: v }))}
-                  />
-                </div>
-              )
-            })}
+                )
+              })}
+            </div>
           </Card>
         ))}
-        {error && <p className="text-sm text-[#D64545]">{error}</p>}
+        {error && <ErrorStrip message={error} />}
       </div>
 
-      <div className="fixed inset-x-0 bottom-0 border-t border-[#E8E8E8]/60 bg-[rgba(250,249,246,0.9)] p-4 backdrop-blur-xl">
-        <button
+      <div className="fixed inset-x-0 bottom-0 border-t border-line-2 bg-paper-2/90 p-4 backdrop-blur-xl">
+        <PrimaryButton
           onClick={save}
           disabled={busy || totalRows === 0}
-          className="mx-auto block w-full max-w-lg rounded-2xl bg-[#58A834] py-4 text-base font-semibold text-white hover:bg-[#46862A] disabled:opacity-40"
+          className="mx-auto block min-h-13 w-full max-w-lg"
         >
           {busy ? 'Se salvează…' : 'Salvează ziua'}
-        </button>
+        </PrimaryButton>
       </div>
     </div>
   )
@@ -369,24 +361,28 @@ function ProgressJobCard({ job, today }: { job: ProgressJob; today: string }) {
   const plan = planPctFn(job.start_date, job.end_date, today)
 
   return (
-    <div className="border-t border-[#F3F1EC] py-3 first:border-t-0 first:pt-0 last:pb-0">
-      <button onClick={() => setOpen((o) => !o)} className="block w-full text-left">
-        <div className="flex items-center justify-between gap-2">
-          <span className="font-medium">{job.name}</span>
-          <span className="flex items-center gap-2 text-sm text-[#5B6673]">
-            plan {pct(plan, 0)}
-            <span
-              aria-hidden
-              className={`inline-block text-[#C9C5BC] transition-transform ${open ? 'rotate-90' : ''}`}
-            >
-              ›
-            </span>
+    <div className="border-t border-line-1 py-1 first:border-t-0">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="flex min-h-10 w-full items-center justify-between gap-2 rounded-chip text-left transition-colors duration-[120ms] ease-std hover:bg-paper-1"
+      >
+        <span className="truncate text-row font-semibold text-ink-1">{job.name}</span>
+        <span className="flex shrink-0 items-center gap-2 text-row text-ink-3">
+          plan {pct(plan)}
+          <span
+            aria-hidden
+            className={`inline-block text-ink-4 transition-transform duration-[120ms] ease-std ${
+              open ? 'rotate-90' : ''
+            }`}
+          >
+            ›
           </span>
-        </div>
+        </span>
       </button>
 
       {open && (
-        <div className="mt-2 space-y-3">
+        <div className="mb-2 mt-2 space-y-2">
           {job.tasks.map((t) => {
             const tp = taskPct(
               t.deliverables.map((d) => ({
@@ -396,15 +392,15 @@ function ProgressJobCard({ job, today }: { job: ProgressJob; today: string }) {
               }))
             )
             return (
-              <div key={t.id} className="rounded-2xl bg-[#FAF9F6] p-3">
+              <div key={t.id} className="rounded-chip bg-paper-2 p-3">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-medium">{t.name}</p>
+                  <p className="truncate text-row font-semibold text-ink-1">{t.name}</p>
                   <div className="flex shrink-0 items-center gap-2">
                     <StatusPill status={t.status} />
-                    <span className="text-sm font-semibold">{pct(tp, 0)}</span>
+                    <span className="text-row font-bold tabular-nums text-ink-1">{pct(tp)}</span>
                   </div>
                 </div>
-                <div className="mt-2 space-y-2">
+                <div className="mt-2.5 space-y-2.5">
                   {t.deliverables.map((d) => {
                     const total = Number(d.qty_total)
                     const done = Number(d.qty_done)
@@ -412,18 +408,18 @@ function ProgressJobCard({ job, today }: { job: ProgressJob; today: string }) {
                     const target = Math.round(plan * total)
                     return (
                       <div key={d.id}>
-                        <div className="flex items-baseline justify-between gap-2 text-sm">
-                          <span className="truncate text-[#5B6673]">{d.name}</span>
-                          <span className="shrink-0 tabular-nums">
-                            <strong>{num(done)}</strong>
-                            <span className="text-[#5B6673]"> / țintă {num(target)} / </span>
+                        <div className="flex items-baseline justify-between gap-2 text-row">
+                          <span className="truncate text-ink-3">{d.name}</span>
+                          <span className="shrink-0 tabular-nums text-ink-2">
+                            <span className="font-bold text-ink-1">{num(done)}</span>
+                            <span className="text-ink-3"> / țintă {num(target)} / </span>
                             {num(total)} {d.um}
                           </span>
                         </div>
                         <ProgressBar
                           donePct={deliverablePct(done, total)}
                           planPct={plan}
-                          className="mt-1"
+                          className="mt-1.5"
                         />
                       </div>
                     )
@@ -442,25 +438,58 @@ function ProgressView() {
   const { projects, loading, error } = useSkeletonProgress()
   const today = todayIso()
 
-  if (loading) return <p className="p-8 text-center text-sm text-[#5B6673]">Se încarcă…</p>
-  if (error) return <p className="p-8 text-center text-sm text-[#D64545]">Eroare: {error}</p>
+  if (loading) {
+    return (
+      <div className="mx-auto max-w-lg space-y-3 px-4 pb-10 pt-3">
+        {[0, 1].map((i) => (
+          <Card key={i}>
+            <Skeleton className="h-4 w-44" />
+            <Skeleton className="mt-3 h-2 w-full" />
+            <Skeleton className="mt-4 h-3.5 w-32" />
+            <Skeleton className="mt-2.5 h-3.5 w-24" />
+          </Card>
+        ))}
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="mx-auto max-w-lg px-4 pb-10 pt-3">
+        <ErrorStrip message={`Eroare: ${error}`} />
+      </div>
+    )
+  }
+
+  if (projects.length === 0) {
+    return (
+      <div className="mx-auto max-w-lg px-4 pb-10 pt-3">
+        <Card className="px-0 py-0">
+          <EmptyState title="Niciun proiect activ">
+            Proiectele active apar aici cu progresul lor.
+          </EmptyState>
+        </Card>
+      </div>
+    )
+  }
 
   return (
-    <div className="mx-auto max-w-lg space-y-4 px-4 pb-10 pt-4">
+    <div className="mx-auto max-w-lg space-y-3 px-4 pb-10 pt-3">
       {projects.map((p) => {
         const prog = projectProgress(p, today)
         return (
-          <Card key={p.id} className="space-y-3">
-            <div>
-              <div className="flex items-baseline justify-between gap-2">
-                <h2 className="font-semibold leading-tight">{p.name}</h2>
-                <span className="shrink-0 text-sm font-semibold">
-                  {pct(prog.donePct)} <span className="font-normal text-[#5B6673]">· plan {pct(prog.planPct, 0)}</span>
-                </span>
-              </div>
-              <ProgressBar donePct={prog.donePct} planPct={prog.planPct} className="mt-2" />
+          <Card key={p.id}>
+            <div className="flex items-baseline justify-between gap-2">
+              <h2 className="min-w-0 truncate text-card font-semibold leading-tight text-ink-1">
+                {p.name}
+              </h2>
+              <span className="shrink-0 text-row tabular-nums text-ink-3">
+                <span className="font-bold text-ink-1">{pct(prog.donePct)}</span> · plan{' '}
+                {pct(prog.planPct)}
+              </span>
             </div>
-            <div>
+            <ProgressBar donePct={prog.donePct} planPct={prog.planPct} className="mt-2.5" />
+            <div className="mt-3">
               {p.jobs.map((j) => (
                 <ProgressJobCard key={j.id} job={j} today={today} />
               ))}
@@ -473,6 +502,11 @@ function ProgressView() {
 }
 
 // ── Containerul Șantier ───────────────────────────────────────────────────
+const SCREEN_OPTIONS: { value: 'day' | 'progress'; label: string }[] = [
+  { value: 'day', label: 'Azi' },
+  { value: 'progress', label: 'Progres' },
+]
+
 export function SantierView({ onDataChanged }: { onDataChanged?: () => void }) {
   const { tasks, loading, error, refetch } = useLabourToday()
   const { projects: skeleton } = useSkeletonProgress()
@@ -489,8 +523,34 @@ export function SantierView({ onDataChanged }: { onDataChanged?: () => void }) {
     return p ? projectProgress(p, today) : null
   }, [skeleton, selected, today])
 
-  if (loading) return <p className="p-8 text-center text-sm text-[#5B6673]">Se încarcă…</p>
-  if (error) return <p className="p-8 text-center text-sm text-[#D64545]">Eroare: {error}</p>
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-paper-2">
+        {/* data e cunoscută din prima, deci banda nu clipește */}
+        <DayBand caption="Șantier · raport zilnic" title={azi()} />
+        <div className="mx-auto max-w-lg space-y-3 px-4 pt-4">
+          {[0, 1, 2].map((i) => (
+            <Card key={i}>
+              <Skeleton className="h-3 w-24" />
+              <Skeleton className="mt-2.5 h-4 w-48" />
+              <Skeleton className="mt-2.5 h-3.5 w-32" />
+            </Card>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-paper-2">
+        <DayBand caption="Șantier · raport zilnic" title={azi()} />
+        <div className="mx-auto max-w-lg px-4 pt-4">
+          <ErrorStrip message={`Eroare: ${error}`} onRetry={refetch} />
+        </div>
+      </div>
+    )
+  }
 
   if (screen === 'report') {
     return (
@@ -509,33 +569,56 @@ export function SantierView({ onDataChanged }: { onDataChanged?: () => void }) {
   }
 
   return (
-    <div className="min-h-screen bg-[#FAF9F6]">
+    <div className="min-h-screen bg-paper-2">
       {screen === 'day' ? (
-        <DayHeader
-          projectNames={projectNames}
-          selected={selected}
-          onSelect={setProjectFilter}
-          progress={progress}
-        />
+        <DayBand caption="Șantier · raport zilnic" title={azi()}>
+          {projectNames.length > 0 && (
+            <ProjectChips
+              projectNames={projectNames}
+              selected={selected}
+              onSelect={setProjectFilter}
+            />
+          )}
+        </DayBand>
       ) : (
-        <div className={`${HEADER_BG} px-4 pb-5 pt-5 text-white`}>
-          <div className="mx-auto max-w-lg">
-            <p className="text-sm text-white/60">Șantier · progres lucrări</p>
-            <h1 className="mt-1 text-2xl font-semibold">Unde suntem?</h1>
-            <p className="mt-1 text-sm text-white/60">realizat · ținta la zi · totalul</p>
-          </div>
-        </div>
+        <DayBand caption="Șantier · progres lucrări" title="Unde suntem?">
+          <p className="mt-1.5 text-sub text-paper-0/70">realizat · ținta la zi · totalul</p>
+        </DayBand>
       )}
 
-      <div className="px-4">
-        <ScreenToggle
-          screen={screen === 'progress' ? 'progress' : 'day'}
-          onScreen={(s) => setScreen(s)}
+      <div className="mx-auto max-w-lg px-4 pt-4">
+        <SegmentedControl
+          options={SCREEN_OPTIONS}
+          value={screen === 'progress' ? 'progress' : 'day'}
+          onChange={(s) => setScreen(s)}
+          className={SEG_ON_PHONE}
         />
       </div>
 
       {screen === 'day' ? (
-        <DayView tasks={tasks} selectedProject={selected} onReport={() => setScreen('report')} />
+        <>
+          {progress && selected && (
+            <div className="mx-auto max-w-lg px-4 pt-3">
+              <Card>
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="min-w-0 truncate text-card font-semibold text-ink-1">
+                    {selected}
+                  </span>
+                  <span className="shrink-0 text-row tabular-nums text-ink-3">
+                    <span className="font-bold text-ink-1">{pct(progress.donePct)}</span> · plan{' '}
+                    {pct(progress.planPct)}
+                  </span>
+                </div>
+                <ProgressBar
+                  donePct={progress.donePct}
+                  planPct={progress.planPct}
+                  className="mt-2.5"
+                />
+              </Card>
+            </div>
+          )}
+          <DayView tasks={tasks} selectedProject={selected} onReport={() => setScreen('report')} />
+        </>
       ) : (
         <ProgressView />
       )}

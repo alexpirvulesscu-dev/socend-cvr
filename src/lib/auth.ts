@@ -1,6 +1,7 @@
 // Autentificare: sesiunea Supabase + rolul CVR al utilizatorului logat.
-// Rolul vine din metadata utilizatorului (app_metadata întâi — doar adminul
-// o poate seta — apoi user_metadata), exact ca funcția cvr_role() din RLS.
+// Rolul vine EXCLUSIV din app_metadata (doar adminul o poate seta), exact ca
+// funcția cvr_role() din RLS după 0015. user_metadata NU se mai citește:
+// utilizatorul și-o poate rescrie singur, deci nu e o sursă de încredere.
 import { useEffect, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './supabase'
@@ -9,10 +10,7 @@ export type Role = 'admin' | 'finance' | 'site' | null
 
 export function roleFromSession(session: Session | null): Role {
   if (!session) return null
-  const meta = session.user
-  const raw =
-    (meta.app_metadata?.role as string | undefined) ??
-    (meta.user_metadata?.role as string | undefined)
+  const raw = session.user.app_metadata?.role as string | undefined
   return raw === 'admin' || raw === 'finance' || raw === 'site' ? raw : null
 }
 

@@ -6,8 +6,18 @@
 import { useMemo, useRef, useState } from 'react'
 import { COST_CATEGORIES, COST_CATEGORY_LABELS, type CostCategory } from '../data/projects'
 import { createProject, type NewProject } from '../data/mutations'
-import { lei, num } from '../lib/format'
-import { BackLink, Card } from '../components/ui'
+// toNum e parserul UNIC de numere românești (înlocuiește vechiul toNumber local,
+// care citea „2.500" ca 2,5 — bug de introducere de date în wizard)
+import { lei, num, toNum as toNumber } from '../lib/format'
+import {
+  BackLink,
+  Card,
+  ErrorStrip,
+  GhostButton,
+  Pill,
+  PrimaryButton,
+} from '../components/ui'
+import { PageHeader } from '../components/Shell'
 
 // ── Starea wizard-ului (totul client-side până la Salvează) ──────────────
 interface WJob {
@@ -43,17 +53,15 @@ const EMPTY_BUDGETS: Record<CostCategory, string> = {
 
 const STEPS = ['Informații proiect', 'Joburi și bugete', 'Taskuri', 'Livrabile']
 
+// Câmpurile: contur line-2 în repaus, line-3 la hover, accent la focus.
+// Fără `outline-none` — inelul global de :focus-visible rămâne vizibil.
 const inputCls =
-  'w-full rounded-xl border border-[#E8E8E8] bg-white px-3 py-2 text-sm outline-none focus:border-[#58A834]'
-const labelCls = 'mb-1 block text-xs font-medium text-[#5B6673]'
-const addBtnCls =
-  'rounded-full bg-[#DDEDDC] px-4 py-2 text-sm font-medium text-[#46862A] hover:bg-[#CBE3C9]'
-const removeBtnCls = 'text-xs font-medium text-[#D64545] hover:underline'
-
-function toNumber(s: string): number {
-  const v = Number(s.replace(',', '.'))
-  return Number.isFinite(v) ? v : 0
-}
+  'w-full rounded-btn border border-line-2 bg-paper-0 px-3 py-2 text-row text-ink-1 transition-colors duration-[120ms] ease-std placeholder:text-ink-4 hover:border-line-3 focus:border-accent'
+const labelCls = 'mb-1 block text-sub font-medium text-ink-3'
+// Ștergerea stă discretă în repaus; roșul apare doar la hover (un buton roșu
+// neapăsat e alarmă falsă).
+const removeBtnCls =
+  'rounded-btn px-2 py-1 text-row font-semibold text-ink-3 transition-colors duration-[120ms] ease-std hover:bg-neg-bg hover:text-neg-pill'
 
 export function ConfigurareView({
   onDone,
@@ -167,21 +175,25 @@ export function ConfigurareView({
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-6">
-      <BackLink label="Proiecte" onClick={onCancel} />
-      <h1 className="text-2xl font-semibold">Configurare proiect</h1>
+    <div className="mx-auto max-w-5xl px-8 py-6">
+      <PageHeader
+        title="Proiect nou"
+        back={<BackLink label="Proiecte" onClick={onCancel} />}
+      />
 
-      {/* indicator de pași */}
-      <div className="mt-4 flex flex-wrap gap-2">
+      {/* indicator de pași — arată ca un control segmentat: pasul curent pe
+          accent, pașii făcuți pe accent-soft, cei rămași pe fundalul segment */}
+      <div className="flex flex-wrap gap-0.5 rounded-[11px] bg-segment p-[3px]">
         {STEPS.map((s, i) => (
           <span
             key={s}
-            className={`rounded-full px-3 py-1.5 text-xs font-medium ${
+            aria-current={i === step ? 'step' : undefined}
+            className={`rounded-chip px-3 py-1.5 text-row font-semibold ${
               i === step
-                ? 'bg-[#0D1A2D] text-white'
+                ? 'bg-accent text-paper-0 shadow-seg'
                 : i < step
-                  ? 'bg-[#DDEDDC] text-[#46862A]'
-                  : 'bg-[#EEECE7] text-[#5B6673]'
+                  ? 'bg-accent-soft text-accent-ink'
+                  : 'text-ink-3'
             }`}
           >
             {i + 1}. {s}
@@ -223,12 +235,12 @@ export function ConfigurareView({
                   <input type="date" className={inputCls} value={endDate} onChange={(e) => setEndDate(e.target.value)} />
                 </div>
               </div>
-              <label className="flex cursor-pointer items-center gap-2 text-sm">
+              <label className="flex cursor-pointer items-center gap-2 text-row text-ink-2">
                 <input
                   type="checkbox"
                   checked={isSmall}
                   onChange={(e) => setIsSmall(e.target.checked)}
-                  className="h-4 w-4 accent-[#58A834]"
+                  className="h-4 w-4 accent-accent"
                 />
                 Proiect mic — stă în secțiunea „Proiecte mici", nu în lista principală
               </label>
@@ -241,7 +253,7 @@ export function ConfigurareView({
               {jobs.map((j, ji) => (
                 <Card key={j.key} className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <h3 className="font-semibold">Job {ji + 1}</h3>
+                    <h3 className="text-card font-semibold text-ink-1">Job {ji + 1}</h3>
                     <button
                       className={removeBtnCls}
                       onClick={() => setJobs((old) => old.filter((x) => x.key !== j.key))}
@@ -311,8 +323,7 @@ export function ConfigurareView({
                   </div>
                 </Card>
               ))}
-              <button
-                className={addBtnCls}
+              <GhostButton
                 onClick={() =>
                   setJobs((old) => [
                     ...old,
@@ -321,7 +332,7 @@ export function ConfigurareView({
                 }
               >
                 + Adaugă job
-              </button>
+              </GhostButton>
             </>
           )}
 
@@ -330,7 +341,7 @@ export function ConfigurareView({
             <>
               {jobs.map((j) => (
                 <Card key={j.key} className="space-y-3">
-                  <h3 className="font-semibold">{j.name || 'Job fără nume'}</h3>
+                  <h3 className="text-card font-semibold text-ink-1">{j.name || 'Job fără nume'}</h3>
                   {tasks
                     .filter((t) => t.jobKey === j.key)
                     .map((t) => (
@@ -359,7 +370,7 @@ export function ConfigurareView({
                           />
                         </div>
                         <button
-                          className={`${removeBtnCls} pb-2`}
+                          className={`${removeBtnCls} mb-1`}
                           onClick={() => {
                             setTasks((old) => old.filter((x) => x.key !== t.key))
                             setDelivs((old) => old.filter((d) => d.taskKey !== t.key))
@@ -369,12 +380,11 @@ export function ConfigurareView({
                         </button>
                       </div>
                     ))}
-                  <button
-                    className={addBtnCls}
+                  <GhostButton
                     onClick={() => setTasks((old) => [...old, { key: newKey(), jobKey: j.key, name: '', value: '' }])}
                   >
                     + Adaugă task
-                  </button>
+                  </GhostButton>
                 </Card>
               ))}
             </>
@@ -389,17 +399,11 @@ export function ConfigurareView({
                 const bad = rows.length > 0 && Math.abs(wsum - 100) > 0.01
                 return (
                   <Card key={t.key} className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <h3 className="font-semibold">{t.name || 'Task fără nume'}</h3>
-                      <span
-                        className={`rounded-full px-2.5 py-1 text-xs font-medium ${
-                          bad || rows.length === 0
-                            ? 'bg-[#F8DEDE] text-[#B23A3A]'
-                            : 'bg-[#DDEDDC] text-[#46862A]'
-                        }`}
-                      >
-                        ponderi: {num(wsum)}%
-                      </span>
+                    <div className="flex items-center justify-between gap-3">
+                      <h3 className="text-card font-semibold text-ink-1">{t.name || 'Task fără nume'}</h3>
+                      <Pill tone={rows.length === 0 ? 'warn' : bad ? 'neg' : 'pos'}>
+                        ponderi: {num(wsum, 1)}%
+                      </Pill>
                     </div>
                     {rows.map((d) => (
                       <div key={d.key} className="flex items-end gap-2">
@@ -464,7 +468,7 @@ export function ConfigurareView({
                           />
                         </div>
                         <button
-                          className={`${removeBtnCls} pb-2`}
+                          className={`${removeBtnCls} mb-1`}
                           onClick={() => setDelivs((old) => old.filter((x) => x.key !== d.key))}
                         >
                           ✕
@@ -472,12 +476,11 @@ export function ConfigurareView({
                       </div>
                     ))}
                     {bad && (
-                      <p className="text-sm text-[#D64545]">
+                      <p className="text-row font-medium text-neg-pill">
                         Ponderile dintr-un task trebuie să însumeze 100%.
                       </p>
                     )}
-                    <button
-                      className={addBtnCls}
+                    <GhostButton
                       onClick={() =>
                         setDelivs((old) => {
                           // ponderea nouă se precompletează cu restul până la 100%
@@ -493,58 +496,45 @@ export function ConfigurareView({
                       }
                     >
                       + Adaugă livrabil
-                    </button>
+                    </GhostButton>
                   </Card>
                 )
               })}
             </>
           )}
 
-          {error && <p className="text-sm text-[#D64545]">Eroare la salvare: {error}</p>}
+          {error && <ErrorStrip message={`Eroare la salvare: ${error}`} />}
 
           {/* navigare între pași */}
           <div className="flex items-center justify-between">
-            <button
-              onClick={() => (step === 0 ? onCancel() : setStep((s) => s - 1))}
-              className="rounded-full bg-[#EEECE7] px-5 py-2.5 text-sm font-medium"
-            >
+            <GhostButton onClick={() => (step === 0 ? onCancel() : setStep((s) => s - 1))}>
               {step === 0 ? 'Renunță' : '← Înapoi'}
-            </button>
+            </GhostButton>
             {step < 3 ? (
-              <button
-                disabled={!stepValid}
-                onClick={() => setStep((s) => s + 1)}
-                className="rounded-full bg-[#58A834] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#46862A] disabled:opacity-40"
-              >
+              <PrimaryButton disabled={!stepValid} onClick={() => setStep((s) => s + 1)}>
                 Continuă →
-              </button>
+              </PrimaryButton>
             ) : (
-              <button
-                disabled={!stepValid || busy}
-                onClick={save}
-                className="rounded-full bg-[#58A834] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#46862A] disabled:opacity-40"
-              >
+              <PrimaryButton disabled={!stepValid || busy} onClick={() => void save()}>
                 {busy ? 'Se salvează…' : 'Salvează proiectul'}
-              </button>
+              </PrimaryButton>
             )}
           </div>
         </div>
 
         {/* ── Sumar lateral ── */}
         <div>
-          <Card className="sticky top-16 space-y-3">
-            <h3 className="text-sm font-semibold">Sumar</h3>
-            <div>
-              <p className="text-xs text-[#5B6673]">Valoare totală contract</p>
-              <p className="text-xl font-semibold">{lei(totalValue)}</p>
-            </div>
-            <div className="space-y-1 border-t border-[#E8E8E8] pt-3 text-sm text-[#5B6673]">
+          <Card title="Sumar" subtitle="Valoare totală contract" className="sticky top-16">
+            <p className="text-stat-sm font-bold tracking-[-0.02em] tabular-nums text-ink-1">
+              {lei(totalValue)}
+            </p>
+            <div className="mt-3 space-y-1 border-t border-line-1 pt-3 text-row text-ink-3">
               <p>{jobs.length === 1 ? 'un job' : `${jobs.length} joburi`}</p>
               <p>{tasks.length === 1 ? 'un task' : `${tasks.length} taskuri`}</p>
               <p>{delivs.length === 1 ? 'un livrabil' : `${delivs.length} livrabile`}</p>
             </div>
             {weightIssues.length > 0 && (
-              <p className="border-t border-[#E8E8E8] pt-3 text-xs text-[#D64545]">
+              <p className="mt-3 border-t border-line-1 pt-3 text-sub font-medium text-neg-pill">
                 {weightIssues.length === 1
                   ? 'Un task are ponderi care nu însumează 100%.'
                   : `${weightIssues.length} taskuri au ponderi care nu însumează 100%.`}

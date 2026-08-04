@@ -1,7 +1,16 @@
 // Ecranul de login: email + parolă prin Supabase Auth.
+// Clean Ledger: un singur card centrat, numele aplicației cu serif, câmpuri
+// pe border-line-2 și butonul principal din sistem. Eroarea de autentificare
+// apare ca bandă în linie (ErrorStrip), niciodată ca text roșu răzleț.
 import { useState } from 'react'
 import { signIn } from '../lib/auth'
-import { Card } from '../components/ui'
+import { Card, ErrorStrip, PrimaryButton } from '../components/ui'
+
+// câmpurile: contur line-2 în repaus, line-3 la hover, accent la focus.
+// fără `outline-none` — inelul global de :focus-visible trebuie să rămână vizibil.
+const inputCls =
+  'w-full rounded-btn border border-line-2 bg-paper-0 px-3 py-2.5 text-row text-ink-1 transition-colors duration-[120ms] ease-std placeholder:text-ink-4 hover:border-line-3 focus:border-accent'
+const labelCls = 'mb-1 block text-sub font-medium text-ink-3'
 
 export function LoginView() {
   const [email, setEmail] = useState('')
@@ -22,22 +31,18 @@ export function LoginView() {
     // la succes, onAuthStateChange re-randează aplicația
   }
 
-  const inputCls =
-    'w-full rounded-xl border border-[#E8E8E8] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#58A834]'
-
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
-      <Card className="w-full max-w-sm space-y-4 p-7">
-        <div>
-          <img src="/logo-socend.png" alt="Socend Construct" className="h-14 w-auto" />
-          <h1 className="sr-only">Socend CVR</h1>
-          <p className="mt-3 text-sm text-[#5B6673]">
-            <span className="font-semibold text-[#0D1A2D]">CVR</span> · cost vs valoare pe proiecte
-          </p>
-        </div>
-        <form onSubmit={submit} className="space-y-3">
+      <Card className="w-full max-w-sm">
+        <img src="/logo-socend.png" alt="Socend Construct" className="h-14 w-auto" />
+        <h1 className="mt-4 text-[clamp(24px,2.2vw,31px)] leading-none text-ink-1">Socend CVR</h1>
+        <p className="mt-2 text-sub text-ink-3">
+          <span className="font-semibold text-ink-1">CVR</span> · cost vs valoare pe proiecte
+        </p>
+
+        <form onSubmit={submit} className="mt-6 space-y-3">
           <div>
-            <label className="mb-1 block text-xs font-medium text-[#5B6673]" htmlFor="email">
+            <label className={labelCls} htmlFor="email">
               Email
             </label>
             <input
@@ -50,7 +55,7 @@ export function LoginView() {
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-[#5B6673]" htmlFor="password">
+            <label className={labelCls} htmlFor="password">
               Parolă
             </label>
             <input
@@ -62,13 +67,10 @@ export function LoginView() {
               onChange={(e) => setPassword(e.target.value)}
             />
           </div>
-          {error && <p className="text-sm text-[#D64545]">{error}</p>}
-          <button
-            disabled={busy || !email || !password}
-            className="w-full rounded-xl bg-[#58A834] py-2.5 text-sm font-semibold text-white hover:bg-[#46862A] disabled:opacity-40"
-          >
+          {error && <ErrorStrip message={error} />}
+          <PrimaryButton type="submit" disabled={busy || !email || !password} className="w-full">
             {busy ? 'Se conectează…' : 'Intră în cont'}
-          </button>
+          </PrimaryButton>
         </form>
       </Card>
     </div>
