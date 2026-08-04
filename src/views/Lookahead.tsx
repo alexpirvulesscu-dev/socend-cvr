@@ -4,7 +4,7 @@
 // firmele mari numesc short-interval planning / lookahead.
 import { useMemo, useState } from 'react'
 import type { ProjectWithKpis } from '../data/projects'
-import { todayIso } from '../data/projects'
+import { taskTargetInvoiceDate, todayIso } from '../data/projects'
 import { deliverablePct, taskPct } from '../domain/kpi'
 import { addDays } from '../components/gantt/ganttScale'
 import { compact, dataRo, dataScurt, lei, num, pct } from '../lib/format'
@@ -94,7 +94,7 @@ export function LookaheadView({
             end,
             donePct: done,
             value: Number(t.value),
-            invoiceDate: t.target_invoice_date,
+            invoiceDate: taskTargetInvoiceDate(t, j),
             remaining,
             startsSoon: start >= today,
             endsSoon: end <= horizon,

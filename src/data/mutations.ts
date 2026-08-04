@@ -186,6 +186,20 @@ export async function updateJobBilling(
   if (error) throw error
 }
 
+/**
+ * Data-țintă de facturare a jobului (0020). Upsert pe job_id, ca situația să
+ * existe chiar dacă jobul n-a fost încă facturat.
+ */
+export async function updateJobTargetInvoiceDate(
+  jobId: string,
+  date: string | null
+): Promise<void> {
+  const { error } = await supabase
+    .from('cvr_job_billing')
+    .upsert({ job_id: jobId, target_invoice_date: date }, { onConflict: 'job_id' })
+  if (error) throw error
+}
+
 /** Garanția de bună execuție reținută de client, în procente (0019). */
 export async function updateProjectRetention(id: string, retentiePct: number): Promise<void> {
   const { error } = await supabase

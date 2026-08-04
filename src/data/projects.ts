@@ -111,9 +111,37 @@ export interface BillingRow {
   incasat: number
   /** data ultimei facturi a jobului (0019) — pentru vechimea banilor neîncasați */
   data_facturii?: string | null
+  /** data la care vrem să facturăm jobul (0020); taskurile fără țintă proprie o moștenesc */
+  target_invoice_date?: string | null
 }
 
 const EMPTY_BILLING: BillingInput = { depus: 0, certificat: 0, facturat: 0, incasat: 0 }
+
+/** Rândul de situație al unui job, normalizat (PostgREST dă când obiect, când array). */
+export function billingRowOf(
+  row: BillingRow | BillingRow[] | null | undefined
+): BillingRow | undefined {
+  return (Array.isArray(row) ? row[0] : row) ?? undefined
+}
+
+/** Data la care vrem să facturăm jobul (0020); null = neplanificată. */
+export function jobTargetInvoiceDate(job: {
+  cvr_job_billing: BillingRow | BillingRow[] | null
+}): string | null {
+  return billingRowOf(job.cvr_job_billing)?.target_invoice_date ?? null
+}
+
+/**
+ * Ținta de facturare a unui task: a lui, dacă are una; altfel a jobului.
+ * Regula stă AICI, într-un singur loc, ca „Ce urmează", Dashboard-ul, Gantt-ul
+ * și cardul de detaliu să spună toate aceeași dată.
+ */
+export function taskTargetInvoiceDate(
+  task: { target_invoice_date: string | null },
+  job: { cvr_job_billing: BillingRow | BillingRow[] | null }
+): string | null {
+  return task.target_invoice_date ?? jobTargetInvoiceDate(job)
+}
 
 /** PostgREST dă obiect pentru relația 1:1; array-ul e plasa de siguranță post-migrare. */
 export function billingOf(row: BillingRow | BillingRow[] | null | undefined): BillingInput {
@@ -348,7 +376,7 @@ const TREE_SELECT = `
     ),
     cvr_job_budgets ( category, amount ),
     cvr_cost_entries ( id, category, amount, description, entry_date ),
-    cvr_job_billing ( depus, certificat, facturat, incasat, data_facturii )
+    cvr_job_billing ( depus, certificat, facturat, incasat, data_facturii, target_invoice_date )
   )
 `
 
@@ -377,7 +405,7 @@ export type EntityPatch =
   | {
       kind: 'billing'
       id: string // = jobId (situația jobului)
-      patch: Partial<BillingInput & { data_facturii: string | null }>
+      patch: Partial<BillingInput & { data_facturii: string | null; target_invoice_date: string | null }>
     }
   | { kind: 'job'; id: string; patch: Partial<Omit<JobRow, 'tasks'>> }
   | { kind: 'task'; id: string; patch: Partial<TaskRow> }

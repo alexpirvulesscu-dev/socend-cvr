@@ -8,6 +8,7 @@ import { useMemo, useState } from 'react'
 import {
   COST_CATEGORIES,
   COST_CATEGORY_LABELS,
+  jobTargetInvoiceDate,
   type CostCategory,
   type JobWithKpis,
   type ProjectWithKpis,
@@ -28,6 +29,7 @@ import {
   updateDeliverable,
   updateJob,
   updateJobBilling,
+  updateJobTargetInvoiceDate,
   updateJobBudget,
   updateProject,
   updateProjectRetention,
@@ -748,6 +750,7 @@ export function JobDetail({
   const k = job.kpis
   // graficul e verdictul acestui card: doar „în urmă" primește culoare
   const schedTone = toneOf(scheduleColor(k.behindDays))
+  const targetInvoice = jobTargetInvoiceDate(job)
 
   return (
     <div className="space-y-3">
@@ -769,7 +772,7 @@ export function JobDetail({
           <span className="text-row font-bold tabular-nums text-ink-1">{lei(k.value)}</span>
         </div>
 
-        <div className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 xl:grid-cols-5">
           <div>
             <FieldLabel>Început</FieldLabel>
             <InlineEdit
@@ -817,6 +820,32 @@ export function JobDetail({
             <FieldValue className="tabular-nums">
               {compact(k.actualCost)} / {compact(k.budgetTotal)} lei
             </FieldValue>
+          </div>
+          {/* ținta de facturare a jobului (0020): taskurile fără dată proprie o moștenesc */}
+          <div>
+            <FieldLabel>Facturare țintă</FieldLabel>
+            <InlineEdit
+              type="date"
+              value={targetInvoice ?? ''}
+              placeholder="neplanificată"
+              display={
+                <FieldValue>
+                  {targetInvoice ? (
+                    dataRo(targetInvoice)
+                  ) : (
+                    <span className="text-ink-3">neplanificată</span>
+                  )}
+                </FieldValue>
+              }
+              onSave={(raw) =>
+                save(
+                  { kind: 'billing', id: job.id, patch: { target_invoice_date: raw || null } },
+                  { kind: 'billing', id: job.id, patch: { target_invoice_date: targetInvoice } },
+                  () => updateJobTargetInvoiceDate(job.id, raw || null)
+                )
+              }
+              inputClassName="text-row"
+            />
           </div>
         </div>
 
@@ -918,6 +947,8 @@ export function TaskDetail({
   onSelect: (sel: Selection) => void
 }) {
   const manDays = useTaskManDays(useMemo(() => [task.id], [task.id]))
+  // ținta jobului: taskul o moștenește dacă n-are una proprie (0020)
+  const jobTarget = jobTargetInvoiceDate(job)
   const consumedMd = manDays[task.id] ?? 0
   const [adding, setAdding] = useState(false)
   const [newRow, setNewRow] = useState({ name: '', um: 'buc', total: '', weight: '', manDays: '' })
@@ -1119,6 +1150,11 @@ export function TaskDetail({
                 <FieldValue>
                   {task.target_invoice_date ? (
                     dataRo(task.target_invoice_date)
+                  ) : jobTarget ? (
+                    // fără dată proprie, taskul merge cu jobul — o spunem, nu o ascundem
+                    <span className="text-ink-3">
+                      {dataRo(jobTarget)} <span className="text-sub">· de la job</span>
+                    </span>
                   ) : (
                     <span className="text-ink-3">neplanificat</span>
                   )}

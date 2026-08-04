@@ -3,7 +3,7 @@
 // față de plan, apoi spune CE E DE FĂCUT. Totul e derivat din datele existente.
 import { useMemo } from 'react'
 import type { ProjectWithKpis } from '../data/projects'
-import { todayIso } from '../data/projects'
+import { jobTargetInvoiceDate, todayIso } from '../data/projects'
 import {
   variationTotals,
   type VariationRow,
@@ -122,10 +122,20 @@ function buildAlerts(
     })
   }
 
-  // 3. ținte de facturare depășite
+  // 3. ținte de facturare depășite — ținta jobului o dată, nu o dată pe task
   for (const p of active) {
     for (const j of p.jobs) {
+      const jobTarget = jobTargetInvoiceDate(j)
+      if (jobTarget && jobTarget < today) {
+        out.push({
+          tone: 'amber',
+          text: `${j.name} (${p.name}) trebuia facturat pe ${dataRo(jobTarget)}.`,
+          action: 'Deschide jobul →',
+          go: () => onOpen({ projectId: p.id, jobId: j.id }),
+        })
+      }
       for (const t of j.tasks) {
+        // taskurile fără țintă proprie moștenesc jobul; nu le anunțăm din nou
         if (!t.target_invoice_date || t.target_invoice_date >= today) continue
         out.push({
           tone: 'amber',
@@ -215,11 +225,17 @@ export function DashboardView({
   // următoarea țintă de facturare
   const nextInvoice = active
     .flatMap((p) =>
-      p.jobs.flatMap((j) =>
-        j.tasks
+      p.jobs.flatMap((j) => {
+        const jobTarget = jobTargetInvoiceDate(j)
+        const dinJob =
+          jobTarget && jobTarget >= today
+            ? [{ date: jobTarget, label: `${j.name} · tot jobul` }]
+            : []
+        const dinTaskuri = j.tasks
           .filter((t) => t.target_invoice_date && t.target_invoice_date >= today)
           .map((t) => ({ date: t.target_invoice_date!, label: `${t.name} · ${j.name}` }))
-      )
+        return [...dinJob, ...dinTaskuri]
+      })
     )
     .sort((a, b) => a.date.localeCompare(b.date))[0]
 

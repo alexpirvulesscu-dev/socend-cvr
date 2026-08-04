@@ -12,6 +12,7 @@
 // în urmă → planificat), iar ultima coloană e marja rândului.
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { EntityPatch, JobWithKpis, ProjectWithKpis, TaskRow } from '../../data/projects'
+import { jobTargetInvoiceDate, taskTargetInvoiceDate } from '../../data/projects'
 import { shiftJobWithTasks, updateJobDates, updateTaskDates } from '../../data/mutations'
 import {
   behindDays as behindDaysOf,
@@ -143,7 +144,7 @@ function taskRowOf(
     editable: true,
     ghost: t.start_date === null && t.end_date === null,
     outside,
-    invoiceDate: t.target_invoice_date,
+    invoiceDate: taskTargetInvoiceDate(t, j),
     projectId: p.id,
     jobId: j.id,
     task: t,
@@ -173,6 +174,7 @@ function buildRows(
     editable: true,
     caret: j.tasks.length > 0,
     collapsed: collapsed.has(`j:${j.id}`),
+    invoiceDate: jobTargetInvoiceDate(j),
     projectId: p.id,
     job: j,
   })
@@ -427,8 +429,9 @@ const GanttRow = memo(function GanttRow({
             </div>
           </div>
         )}
-        {/* ținta de facturare — romb plin; roșu dacă data a trecut */}
-        {r.kind === 'task' && r.invoiceDate && r.invoiceDate >= rangeStart && (
+        {/* ținta de facturare — romb plin; roșu dacă data a trecut.
+            Apare și pe job (ținta lui, 0020) și pe task (a lui sau moștenită). */}
+        {r.kind !== 'project' && r.invoiceDate && r.invoiceDate >= rangeStart && (
           <div
             className={`absolute top-1/2 z-10 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rotate-45 border border-paper-0 ${
               invoiceOverdue ? 'bg-neg' : 'bg-ink-1'
