@@ -45,7 +45,8 @@ import {
   taskPct,
   type BillingInput,
 } from '../../domain/kpi'
-import { DASH, compact, dataRo, lei, num, pct, toNum, zile } from '../../lib/format'
+import { DASH, dataRo, lei, num, pct, toNum, zile } from '../../lib/format'
+import { TARIF_ORA, manDaysToHours } from '../../data/labour'
 import {
   Card,
   DangerButton,
@@ -559,7 +560,7 @@ export function ProjectDetail({
 
 // ── Detaliu · JOB ────────────────────────────────────────────────────────
 
-function BugetVsCostInline({ job, save }: { job: JobWithKpis; save: Save }) {
+export function BugetVsCostInline({ job, save }: { job: JobWithKpis; save: Save }) {
   function saveBudget(cat: CostCategory, raw: string) {
     const v = toNum(raw)
     const nextRows = COST_CATEGORIES.map((c) => ({
@@ -611,7 +612,7 @@ function BugetVsCostInline({ job, save }: { job: JobWithKpis; save: Save }) {
   )
 }
 
-function CosturiJob({ job, save }: { job: JobWithKpis; save: Save }) {
+export function CosturiJob({ job, save }: { job: JobWithKpis; save: Save }) {
   const [category, setCategory] = useState<CostCategory>('manopera')
   const [amount, setAmount] = useState('')
   const [description, setDescription] = useState('')
@@ -751,6 +752,11 @@ export function JobDetail({
   // graficul e verdictul acestui card: doar „în urmă" primește culoare
   const schedTone = toneOf(scheduleColor(k.behindDays))
   const targetInvoice = jobTargetInvoiceDate(job)
+  // manopera jobului: bugetul pe categoria „manopera" și orele care ies din el
+  const bugetManopera = job.budgetByCategory.manopera ?? 0
+  const orePlan = bugetManopera / TARIF_ORA
+  // orele consumate pe job vin din Pontaj abia după repartiția pe job (vezi data/labour.ts)
+  const oreConsumate: number | null = null
 
   return (
     <div className="space-y-3">
@@ -815,10 +821,24 @@ export function JobDetail({
               {scheduleText(k.behindDays)}
             </FieldValue>
           </div>
+          {/* La nivel de job se vede DOAR manopera: ore și valoare. Materialele,
+              utilajele, transportul, indirectele și profitul stau la proiect. */}
           <div>
-            <FieldLabel>Cost</FieldLabel>
+            <FieldLabel>Manoperă</FieldLabel>
+            <FieldValue className="tabular-nums">{lei(bugetManopera)}</FieldValue>
+          </div>
+          <div>
+            <FieldLabel>Ore</FieldLabel>
             <FieldValue className="tabular-nums">
-              {compact(k.actualCost)} / {compact(k.budgetTotal)} lei
+              {oreConsumate === null ? (
+                <>
+                  {num(orePlan)} planificate <span className="text-ink-3">· consumate: vin din Pontaj</span>
+                </>
+              ) : (
+                <>
+                  {num(oreConsumate)} din {num(orePlan)}
+                </>
+              )}
             </FieldValue>
           </div>
           {/* ținta de facturare a jobului (0020): taskurile fără dată proprie o moștenesc */}
@@ -914,8 +934,6 @@ export function JobDetail({
       </Card>
 
       <SituatieJob job={job} save={save} />
-      <BugetVsCostInline job={job} save={save} />
-      <CosturiJob job={job} save={save} />
     </div>
   )
 }
@@ -926,8 +944,6 @@ export function JobDetail({
 // rândurile să nu se desincronizeze niciodată.
 const D_UM = 'w-[52px] shrink-0'
 const D_QTY = 'w-[140px] shrink-0'
-const D_WEIGHT = 'w-[60px] shrink-0'
-const D_MD = 'w-[60px] shrink-0'
 const D_PROGRESS = 'w-[116px] shrink-0'
 const D_DEL = 'w-[40px] shrink-0'
 
@@ -975,6 +991,9 @@ export function TaskDetail({
         : Number(task.planned_man_days)
   // efortul în oameni-zile: câștigat (plan × progres fizic) vs consumat
   const effort = plannedMd && plannedMd > 0 ? effortKpis(plannedMd, consumedMd, pctDone) : null
+  // la nivel de task se arată DOAR manopera: orele planificate și valoarea lor
+  const orePlanTask = manDaysToHours(plannedMd)
+  const manoperaLei = Math.round(orePlanTask * TARIF_ORA)
   const targetLine = effort === null ? null : Math.min(effort.consumedPct, 1)
 
   function persistTask(over: Partial<{ name: string; value: number }>) {
@@ -1084,23 +1103,7 @@ export function TaskDetail({
           </div>
           <div className="flex items-center gap-2">
             <StatusPill status={task.status} />
-            <InlineEdit
-              type="number"
-              value={String(task.value)}
-              display={
-                <span className="text-row font-bold tabular-nums text-ink-1">
-                  {lei(Number(task.value))}
-                </span>
-              }
-              onSave={(raw) =>
-                save(
-                  { kind: 'task', id: task.id, patch: { value: toNum(raw) } },
-                  { kind: 'task', id: task.id, patch: { value: task.value } },
-                  () => persistTask({ value: toNum(raw) })
-                )
-              }
-              inputClassName="w-28 text-right text-row font-bold"
-            />
+            <span className="text-row font-bold tabular-nums text-ink-1">{lei(manoperaLei)}</span>
           </div>
         </div>
 
@@ -1176,9 +1179,14 @@ export function TaskDetail({
           </div>
           <div>
             {/* banul, nu doar procentul — moneda în care gândește restul aplicației */}
-            <FieldLabel>Executat</FieldLabel>
-            <FieldValue className="font-bold tabular-nums">
-              {lei(Math.round(Number(task.value) * pctDone))}
+            <FieldLabel>Manoperă</FieldLabel>
+            <FieldValue className="font-bold tabular-nums">{lei(manoperaLei)}</FieldValue>
+          </div>
+          <div>
+            <FieldLabel>Ore</FieldLabel>
+            <FieldValue className="tabular-nums">
+              {num(orePlanTask)} plan{' '}
+              <span className="text-ink-3">· consum din Pontaj</span>
             </FieldValue>
           </div>
         </div>
@@ -1237,11 +1245,7 @@ export function TaskDetail({
           </GhostButton>
         }
       >
-        {Math.round(weightSum) !== 100 && task.deliverables.length > 0 && (
-          <p className="mb-3 rounded-chip bg-warn-bg px-3 py-2 text-row font-medium text-warn-pill">
-            Ponderile însumează {num(weightSum)}% — ajustează-le să dea 100%.
-          </p>
-        )}
+        
 
         <div className="-mx-5 overflow-x-auto">
           <div className="min-w-[620px]">
@@ -1249,10 +1253,6 @@ export function TaskDetail({
               <span className="min-w-0 flex-1">Livrabil</span>
               <span className={D_UM}>UM</span>
               <span className={`${D_QTY} text-right`}>Realizat / total</span>
-              <span className={`${D_WEIGHT} text-right`}>Pond.</span>
-              <span className={`${D_MD} text-right`} title="Oameni-zile planificați">
-                O-zile
-              </span>
               <span className={D_PROGRESS}>Progres</span>
               <span className={D_DEL} aria-hidden />
             </TableHead>
@@ -1305,29 +1305,6 @@ export function TaskDetail({
                         display={<span className="text-ink-2">{num(Number(d.qty_total))}</span>}
                         onSave={(raw) => saveDeliv(d, 'qty_total', raw)}
                         inputClassName="w-16 text-right text-row"
-                      />
-                    </div>
-                    <div className={`${D_WEIGHT} text-right tabular-nums`}>
-                      <InlineEdit
-                        type="number"
-                        value={String(d.weight)}
-                        display={<span className="text-ink-2">{num(Number(d.weight))}%</span>}
-                        onSave={(raw) => saveDeliv(d, 'weight', raw)}
-                        inputClassName="w-14 text-right text-row"
-                      />
-                    </div>
-                    <div className={`${D_MD} text-right tabular-nums`}>
-                      <InlineEdit
-                        type="number"
-                        value={d.planned_man_days == null ? '' : String(d.planned_man_days)}
-                        placeholder={DASH}
-                        display={
-                          <span className="text-ink-2">
-                            {d.planned_man_days == null ? DASH : num(Number(d.planned_man_days))}
-                          </span>
-                        }
-                        onSave={(raw) => saveDeliv(d, 'planned_man_days', raw)}
-                        inputClassName="w-14 text-right text-row"
                       />
                     </div>
                     <div className={`${D_PROGRESS} flex items-center gap-2`}>
@@ -1406,12 +1383,12 @@ export function TaskDetail({
         </p>
       </Card>
 
-      {/* Efortul, în oameni-zile — două bare separate, verdictul în oameni-zile:
-          „ai câștigat X oameni-zile de plan, ai cheltuit Y" (nu procente amestecate) */}
+      {/* Efortul, în ORE — două bare separate, verdictul tot în ore:
+          „munca făcută a câștigat X ore din plan, ai consumat Y" (nu procente amestecate) */}
       {effort !== null && (
         <Card
           className="space-y-3"
-          title="Efort (oameni-zile)"
+          title="Efort (ore)"
           action={
             <span
               className={`shrink-0 text-row font-bold tabular-nums ${
@@ -1419,8 +1396,8 @@ export function TaskDetail({
               }`}
             >
               {effort.variance >= 0
-                ? `economie ${num(Math.abs(effort.variance), 1)} oameni-zile`
-                : `depășire ${num(Math.abs(effort.variance), 1)} oameni-zile`}
+                ? `economie ${num(manDaysToHours(Math.abs(effort.variance)))} ore`
+                : `depășire ${num(manDaysToHours(Math.abs(effort.variance)))} ore`}
             </span>
           }
         >
@@ -1428,8 +1405,8 @@ export function TaskDetail({
             <div className="flex items-baseline justify-between gap-3 text-sub text-ink-3">
               <span>Progres fizic</span>
               <span className="tabular-nums">
-                {pct(pctDone)} · {num(effort.earned, 1)} din {num(effort.planned)} oameni-zile
-                câștigate
+                {pct(pctDone)} · {num(manDaysToHours(effort.earned))} din{' '}
+                {num(manDaysToHours(effort.planned))} ore câștigate
               </span>
             </div>
             <ProgressBar donePct={pctDone} />
@@ -1437,10 +1414,10 @@ export function TaskDetail({
 
           <div className="space-y-1.5">
             <div className="flex items-baseline justify-between gap-3 text-sub text-ink-3">
-              <span>Efort folosit din plan</span>
+              <span>Ore consumate din plan</span>
               <span className="tabular-nums">
-                {pct(effort.consumedPct)} · {num(effort.consumed)} din {num(effort.planned)}{' '}
-                oameni-zile
+                {pct(effort.consumedPct)} · {num(manDaysToHours(effort.consumed))} din{' '}
+                {num(manDaysToHours(effort.planned))} ore
               </span>
             </div>
             <ProgressBar
@@ -1451,8 +1428,8 @@ export function TaskDetail({
 
           <p className="text-sub leading-relaxed text-ink-3">
             {effort.variance >= 0
-              ? 'Munca făcută a „câștigat" mai multe oameni-zile decât ai cheltuit — echipa produce în ritmul planificat sau mai bine.'
-              : 'Ai cheltuit mai multe oameni-zile decât a „câștigat" munca făcută — la ritmul ăsta, taskul depășește planul de manoperă.'}
+              ? 'Munca făcută a „câștigat" mai multe ore decât ai consumat — echipa produce în ritmul planificat sau mai bine.'
+              : 'Ai consumat mai multe ore decât a „câștigat" munca făcută — la ritmul ăsta, taskul depășește planul de manoperă.'}
           </p>
         </Card>
       )}

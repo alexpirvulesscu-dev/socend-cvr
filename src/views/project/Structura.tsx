@@ -6,7 +6,7 @@ import type { EntityPatch, JobWithKpis, ProjectWithKpis, TaskRow } from '../../d
 import { addJob, addTask, setJobsOrder, setTasksOrder } from '../../data/mutations'
 import type { Save } from '../../data/save'
 import { marginColor, scheduleColor, taskPct } from '../../domain/kpi'
-import { compact, dataScurt, pct, toNum, zile } from '../../lib/format'
+import { compact, dataScurt, num, pct, toNum, zile } from '../../lib/format'
 import {
   Card,
   EmptyState,
@@ -16,6 +16,7 @@ import {
   toneOf,
 } from '../../components/ui'
 import { toast } from '../../components/Toast'
+import { TARIF_ORA, manDaysToHours } from '../../data/labour'
 import type { Selection } from '../../lib/selection'
 import { JobDetail, ProjectDetail, TaskDetail } from './Detalii'
 
@@ -126,6 +127,9 @@ function JobRow({
   const k = job.kpis
   const late = k.behindDays >= 2
   const inLucru = job.tasks.filter((t) => t.status === 'in_lucru').length
+  // în arbore, joburile și taskurile se măsoară în ORE (manopera vândută / tarif),
+  // nu în lei de contract — banii de contract se văd doar la nivel de proiect
+  const oreJob = Math.round((job.budgetByCategory.manopera ?? 0) / TARIF_ORA)
   return (
     <div className="flex items-center gap-3">
       <button
@@ -143,7 +147,7 @@ function JobRow({
       <div className="min-w-0 flex-1" onClick={onSelect}>
         <p className="truncate text-row font-semibold text-ink-1">{job.name}</p>
         <p className="truncate text-sub text-ink-3">
-          {dataScurt(job.start_date)} – {dataScurt(job.end_date)} · {compact(k.value)} lei
+          {dataScurt(job.start_date)} – {dataScurt(job.end_date)} · {num(oreJob)} ore
           {late && (
             <span className={scheduleColor(k.behindDays) === 'error' ? 'text-neg' : 'text-warn'}>
               {' '}
@@ -179,6 +183,12 @@ function TaskRow({
       weight: Number(d.weight),
     }))
   )
+  const oreTask = Math.round(
+    manDaysToHours(
+      task.planned_man_days ??
+        task.deliverables.reduce((sum, d) => sum + Number(d.planned_man_days ?? 0), 0)
+    )
+  )
   return (
     <div className="flex items-center gap-3 pl-9" onClick={onSelect}>
       <span className="w-5 shrink-0 text-meta font-semibold tabular-nums text-ink-4">
@@ -187,7 +197,7 @@ function TaskRow({
       <div className="min-w-0 flex-1">
         <p className="truncate text-row font-medium text-ink-1">{task.name}</p>
         <p className="truncate text-sub text-ink-3">
-          {compact(Number(task.value))} lei
+          {num(oreTask)} ore
           {task.deliverables.length > 0 && (
             <span className="text-ink-3">
               {' '}
@@ -197,7 +207,9 @@ function TaskRow({
           )}
         </p>
       </div>
-      <StatusPill status={task.status} />
+      {/* „Neînceput" e cazul obișnuit și se citește oricum din 0,0% — pastila
+          apare doar când taskul are ceva de spus, ca numele să nu se taie */}
+      {task.status !== 'neinceput' && <StatusPill status={task.status} />}
       <div className="hidden w-[120px] shrink-0 items-center gap-2 sm:flex">
         <ProgressBar donePct={done} className="flex-1" />
         <span className="w-9 shrink-0 text-right text-row font-bold tabular-nums text-ink-1">

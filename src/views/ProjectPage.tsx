@@ -6,6 +6,7 @@ import type { EntityPatch, ProjectWithKpis } from '../data/projects'
 import { todayIso } from '../data/projects'
 import type { VariationRow } from '../data/variations'
 import { makeSave } from '../data/save'
+import { useLabourHours } from '../data/labour'
 import {
   cashColor,
   costColor,
@@ -135,6 +136,8 @@ export function ProjectPageView({
 }) {
   const [tab, setTab] = useState<SubTab>('prezentare')
   const save = useMemo(() => makeSave(patchEntity), [patchEntity])
+  // orele reale din Pontaj (deocamdată doar pe proiect)
+  const { hours } = useLabourHours()
   const v = verdict(p)
 
   const variatiiProiect = variations.filter((x) => x.project_id === p.id)
@@ -192,7 +195,9 @@ export function ProjectPageView({
         />
       )}
 
-      {tab === 'costuri' && <CosturiProiect p={p} />}
+      {tab === 'costuri' && (
+        <CosturiProiect p={p} save={save} hours={hours.byProject[p.id] ?? null} />
+      )}
 
       {tab === 'variatii' && (
         <VariatiiView

@@ -5,7 +5,7 @@
 // Toate cifrele sunt rulate din joburi (job.kpis / job.costByCategory), ca
 // fiecare zonă din panou să spună același lucru: banda de sus = subsolul
 // tabelului pe joburi = totalul pe categorii.
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import {
   COST_CATEGORY_LABELS,
   type CostCategory,
@@ -13,7 +13,10 @@ import {
   type ProjectWithKpis,
 } from '../../data/projects'
 import { costColor } from '../../domain/kpi'
-import { DASH, compact, dataScurt, lei, pct } from '../../lib/format'
+import { DASH, compact, dataScurt, lei, num, pct } from '../../lib/format'
+import { TARIF_ORA } from '../../data/labour'
+import type { Save } from '../../data/save'
+import { BugetVsCostInline, CosturiJob } from './Detalii'
 import {
   Card,
   EmptyState,
@@ -35,6 +38,25 @@ const CATEGORY_ORDER: CostCategory[] = [
   'subcontractori',
   'utilaje',
   'organizare',
+]
+
+/**
+ * Defalcarea costului planificat, în ordinea în care se citește. „Transport"
+ * nu e încă o categorie separată în bază — intră unde a fost bugetat.
+ */
+const PLAN_ROWS: {
+  key: 'direct' | 'manopera' | 'materiale' | 'utilaje' | 'subcontractori' | 'organizare' | 'profit'
+  label: string
+  hint?: string
+  strong?: boolean
+}[] = [
+  { key: 'direct', label: 'Cost direct', strong: true },
+  { key: 'manopera', label: 'Manoperă' },
+  { key: 'materiale', label: 'Materiale' },
+  { key: 'utilaje', label: 'Utilaje' },
+  { key: 'subcontractori', label: 'Subcontractori' },
+  { key: 'organizare', label: 'Cost indirect', hint: 'organizare de șantier', strong: true },
+  { key: 'profit', label: 'Profit planificat', strong: true },
 ]
 
 /** Câte intrări de cost arătăm în „Ultimele costuri". */
@@ -81,8 +103,43 @@ interface Recent extends CostRow {
   jobName: string
 }
 
-export function CosturiProiect({ p }: { p: ProjectWithKpis }) {
+export function CosturiProiect({
+  p,
+  save,
+  hours,
+}: {
+  p: ProjectWithKpis
+  save: Save
+  /** ore consumate pe proiect, din Pontaj */
+  hours: number | null
+}) {
   const donePct = p.kpis.donePct
+  const [jobSel, setJobSel] = useState<string>(p.jobs[0]?.id ?? '')
+  const jobEdit = p.jobs.find((j) => j.id === jobSel) ?? p.jobs[0]
+
+  // ── Banii proiectului, așa cum au fost vânduți ────────────────────────
+  const bani = useMemo(() => {
+    const manopera = p.jobs.reduce((s, j) => s + j.budgetByCategory.manopera, 0)
+    const materiale = p.jobs.reduce((s, j) => s + j.budgetByCategory.materiale, 0)
+    const utilaje = p.jobs.reduce((s, j) => s + j.budgetByCategory.utilaje, 0)
+    const subcontractori = p.jobs.reduce((s, j) => s + j.budgetByCategory.subcontractori, 0)
+    const organizare = p.jobs.reduce((s, j) => s + j.budgetByCategory.organizare, 0)
+    const buget = manopera + materiale + utilaje + subcontractori + organizare
+    const valoare = Number(p.contract_value)
+    return {
+      valoare,
+      buget,
+      manopera,
+      materiale,
+      utilaje,
+      subcontractori,
+      organizare,
+      direct: manopera + materiale + utilaje + subcontractori,
+      profit: valoare - buget,
+      marja: valoare > 0 ? (valoare - buget) / valoare : 0,
+      orePlan: manopera / TARIF_ORA,
+    }
+  }, [p.jobs, p.contract_value])
 
   // ── Totalurile, rulate din joburi ──────────────────────────────────────
   const totals = useMemo(() => {
@@ -136,6 +193,74 @@ export function CosturiProiect({ p }: { p: ProjectWithKpis }) {
 
   return (
     <div className="space-y-4">
+      {/* ── Banii proiectului: singurul loc unde se văd toate categoriile ── */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard
+          label="Valoare contract"
+          value={`${compact(bani.valoare)} lei`}
+          pills={[{ text: 'fără TVA' }]}
+          footnote={lei(bani.valoare)}
+        />
+        <StatCard
+          label="Cost planificat"
+          value={`${compact(bani.buget)} lei`}
+          pills={[{ text: 'direct + indirecte' }]}
+          footnote={lei(bani.buget)}
+        />
+        <StatCard
+          label="Profit planificat"
+          value={`${compact(bani.profit)} lei`}
+          tone={bani.profit >= 0 ? 'pos' : 'neg'}
+          pills={[{ text: `marjă ${pct(bani.marja)}` }]}
+          footnote={lei(bani.profit)}
+        />
+        <StatCard
+          label="Ore de manoperă"
+          value={hours === null ? num(bani.orePlan) : `${num(hours)} din ${num(bani.orePlan)}`}
+          pills={[{ text: `${lei(bani.manopera)} manoperă` }]}
+          footnote={
+            hours === null
+              ? 'ore vândute la 75 lei/oră · consumul vine din Pontaj'
+              : `consumat ${pct(bani.orePlan > 0 ? hours / bani.orePlan : 0)} din orele vândute`
+          }
+        />
+      </div>
+
+      {/* ── Cum e împărțit costul planificat ─────────────────────────── */}
+      <Card
+        title="Structura costului planificat"
+        subtitle="Așa a fost vândut proiectul: costurile directe pe categorii, indirectele separat, iar restul e profitul."
+      >
+        <div className="divide-y divide-line-1">
+          {PLAN_ROWS.map((r) => {
+            const val = bani[r.key]
+            return (
+              <div key={r.key} className="flex items-baseline justify-between gap-4 py-2.5">
+                <span className={`text-row ${r.strong ? 'font-semibold text-ink-1' : 'text-ink-2'}`}>
+                  {r.label}
+                  {r.hint && <span className="text-sub text-ink-3"> · {r.hint}</span>}
+                </span>
+                <span
+                  className={`text-row tabular-nums ${
+                    r.strong ? 'font-bold text-ink-1' : 'text-ink-1'
+                  }`}
+                >
+                  {lei(val)}
+                  <span className="text-ink-3">
+                    {' '}
+                    · {pct(bani.valoare > 0 ? val / bani.valoare : 0)}
+                  </span>
+                </span>
+              </div>
+            )
+          })}
+        </div>
+        <div className="mt-3 flex items-baseline justify-between gap-4 border-t border-line-2 pt-3">
+          <span className="text-row font-semibold text-ink-1">Valoare contract</span>
+          <span className="text-row font-bold tabular-nums text-ink-1">{lei(bani.valoare)}</span>
+        </div>
+      </Card>
+
       {/* ── Banda de cifre ─────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard
@@ -290,6 +415,35 @@ export function CosturiProiect({ p }: { p: ProjectWithKpis }) {
           )}
         </div>
       </Card>
+
+      {/* ── Editarea banilor pe job: bugetul și costurile reale ────────── */}
+      {jobEdit && (
+        <div className="space-y-4">
+          <Card
+            title="Buget și costuri pe job"
+            subtitle="Alege jobul; banii se editează aici, nu în pagina jobului."
+            action={
+              <select
+                value={jobSel}
+                onChange={(e) => setJobSel(e.target.value)}
+                className="rounded-btn border border-line-2 bg-paper-0 px-2.5 py-1.5 text-row text-ink-1 transition-colors duration-[120ms] ease-std hover:border-line-3 focus:border-accent"
+              >
+                {p.jobs.map((j) => (
+                  <option key={j.id} value={j.id}>
+                    {j.name}
+                  </option>
+                ))}
+              </select>
+            }
+          >
+            <p className="text-row text-ink-3">
+              Jobul selectat: <strong className="font-semibold text-ink-1">{jobEdit.name}</strong>
+            </p>
+          </Card>
+          <BugetVsCostInline job={jobEdit} save={save} />
+          <CosturiJob job={jobEdit} save={save} />
+        </div>
+      )}
 
       {/* ── Ultimele costuri ───────────────────────────────────────────── */}
       <Card
