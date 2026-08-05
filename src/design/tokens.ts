@@ -52,6 +52,7 @@ export const color = {
   cat3: '#5FA8A0',
   cat4: '#D9A441',
   cat5: '#A8AA9C',
+  cat6: '#B0765C',
   grid: '#F2F1EA',
 
   track: '#EEEDE5',
@@ -67,6 +68,7 @@ export const CATEGORY_COLOR = {
   manopera: color.cat2,
   subcontractori: color.cat3,
   utilaje: color.cat4,
+  transport: color.cat6,
   organizare: color.cat5,
 } as const
 

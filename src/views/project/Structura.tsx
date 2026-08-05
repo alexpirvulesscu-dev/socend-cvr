@@ -241,7 +241,7 @@ function AddJobForm({
       const id = await addJob(
         p.id,
         { name: name.trim(), startDate: start, endDate: end },
-        { manopera: 0, utilaje: 0, materiale: 0, subcontractori: 0, organizare: 0 },
+        { manopera: 0, utilaje: 0, materiale: 0, subcontractori: 0, transport: 0, organizare: 0 },
         p.jobs.length + 1
       )
       onDone(id)

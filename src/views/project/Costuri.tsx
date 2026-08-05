@@ -37,6 +37,7 @@ const CATEGORY_ORDER: CostCategory[] = [
   'materiale',
   'subcontractori',
   'utilaje',
+  'transport',
   'organizare',
 ]
 
@@ -45,7 +46,15 @@ const CATEGORY_ORDER: CostCategory[] = [
  * nu e încă o categorie separată în bază — intră unde a fost bugetat.
  */
 const PLAN_ROWS: {
-  key: 'direct' | 'manopera' | 'materiale' | 'utilaje' | 'subcontractori' | 'organizare' | 'profit'
+  key:
+    | 'direct'
+    | 'manopera'
+    | 'materiale'
+    | 'utilaje'
+    | 'subcontractori'
+    | 'transport'
+    | 'organizare'
+    | 'profit'
   label: string
   hint?: string
   strong?: boolean
@@ -55,6 +64,7 @@ const PLAN_ROWS: {
   { key: 'materiale', label: 'Materiale' },
   { key: 'utilaje', label: 'Utilaje' },
   { key: 'subcontractori', label: 'Subcontractori' },
+  { key: 'transport', label: 'Transport' },
   { key: 'organizare', label: 'Cost indirect', hint: 'organizare de șantier', strong: true },
   { key: 'profit', label: 'Profit planificat', strong: true },
 ]
@@ -123,8 +133,9 @@ export function CosturiProiect({
     const materiale = p.jobs.reduce((s, j) => s + j.budgetByCategory.materiale, 0)
     const utilaje = p.jobs.reduce((s, j) => s + j.budgetByCategory.utilaje, 0)
     const subcontractori = p.jobs.reduce((s, j) => s + j.budgetByCategory.subcontractori, 0)
+    const transport = p.jobs.reduce((s, j) => s + j.budgetByCategory.transport, 0)
     const organizare = p.jobs.reduce((s, j) => s + j.budgetByCategory.organizare, 0)
-    const buget = manopera + materiale + utilaje + subcontractori + organizare
+    const buget = manopera + materiale + utilaje + subcontractori + transport + organizare
     const valoare = Number(p.contract_value)
     return {
       valoare,
@@ -133,8 +144,9 @@ export function CosturiProiect({
       materiale,
       utilaje,
       subcontractori,
+      transport,
       organizare,
-      direct: manopera + materiale + utilaje + subcontractori,
+      direct: manopera + materiale + utilaje + subcontractori + transport,
       profit: valoare - buget,
       marja: valoare > 0 ? (valoare - buget) / valoare : 0,
       orePlan: manopera / TARIF_ORA,

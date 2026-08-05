@@ -22,6 +22,7 @@ export type CostCategory =
   | 'utilaje'
   | 'materiale'
   | 'subcontractori'
+  | 'transport'
   | 'organizare'
 
 /** Eticheta românească a fiecărei categorii de cost (în DB stau slug-uri ASCII). */
@@ -30,6 +31,7 @@ export const COST_CATEGORY_LABELS: Record<CostCategory, string> = {
   utilaje: 'Utilaje',
   materiale: 'Materiale',
   subcontractori: 'Subcontractori',
+  transport: 'Transport',
   organizare: 'Organizare',
 }
 
@@ -38,6 +40,7 @@ export const COST_CATEGORIES: CostCategory[] = [
   'utilaje',
   'materiale',
   'subcontractori',
+  'transport',
   'organizare',
 ]
 
@@ -212,6 +215,7 @@ function sumByCategory(rows: { category: CostCategory; amount: number }[]) {
     utilaje: 0,
     materiale: 0,
     subcontractori: 0,
+    transport: 0,
     organizare: 0,
   } as Record<CostCategory, number>
   for (const r of rows) out[r.category] += Number(r.amount)

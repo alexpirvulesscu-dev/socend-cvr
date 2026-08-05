@@ -48,6 +48,7 @@ const EMPTY_BUDGETS: Record<CostCategory, string> = {
   utilaje: '',
   materiale: '',
   subcontractori: '',
+  transport: '',
   organizare: '',
 }
 
