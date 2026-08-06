@@ -127,6 +127,12 @@ export function CronologicView({
   // Cantitatea e verde (muncă raportată), oamenii sunt informativi (vin din
   // Pontaj, nu sunt un verdict), sâmbăta e doar o bandă de hârtie, iar zilele
   // fără date rămân decor (ink-4).
+  // Oameni-zile pot fi fracționate: cine e repartizat pe job sau pe proiect se
+  // împarte la taskurile candidate, ca totalul zilei să rămână numărul real de
+  // oameni. Zecimala se arată doar când există — altfel „0,4 oameni" ar fi
+  // rotunjit la „0" și ar părea că nu a lucrat nimeni.
+  const oameni = (v: number) => num(v, Number.isInteger(v) ? 0 : 1)
+
   const dayCell = 'h-8 px-0 text-center text-meta tabular-nums'
   const qtyCell = `${dayCell} bg-pos-bg font-semibold text-pos-pill`
   const workersCell = `${dayCell} bg-info-bg font-semibold text-info`
@@ -174,12 +180,12 @@ export function CronologicView({
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
             <StatCard
               label="Oameni-zile · luna asta"
-              value={num(stats.manDaysMonth)}
+              value={num(stats.manDaysMonth, 1)}
               footnote="suma oamenilor din Pontaj, zi cu zi"
             />
             <StatCard
               label="Oameni-zile · de la început"
-              value={num(stats.manDaysAll)}
+              value={num(stats.manDaysAll, 1)}
               footnote="pe tot jobul, toate lunile"
             />
             <StatCard
@@ -309,15 +315,15 @@ export function CronologicView({
                                     v ? workersCell : dow === 6 ? saturdayCell : emptyCell
                                   }
                                 >
-                                  {v ? num(v) : dow === 0 ? '' : DASH}
+                                  {v ? oameni(v) : dow === 0 ? '' : DASH}
                                 </td>
                               )
                             })}
                             <td className={`${totalCell} text-info`}>
-                              {workersMonth > 0 ? num(workersMonth) : DASH}
+                              {workersMonth > 0 ? oameni(workersMonth) : DASH}
                             </td>
                             <td className={`${totalCell} text-info`}>
-                              {workersAll > 0 ? num(workersAll) : DASH}
+                              {workersAll > 0 ? oameni(workersAll) : DASH}
                             </td>
                             <td className={totalMuted}>{DASH}</td>
                             <td className={totalMuted}>{DASH}</td>

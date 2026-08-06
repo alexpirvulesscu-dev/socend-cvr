@@ -5,14 +5,31 @@ import { supabase } from '../lib/supabase'
 import type { TaskStatus } from '../domain/kpi'
 import type { DeliverableRow } from './projects'
 
+/** La ce nivel i-a trimis Pontajul pe oameni: direct pe task, pe job, pe proiect. */
+export type LabourLevel = 'task' | 'job' | 'project'
+
 export interface LabourTask {
   taskId: string
   taskName: string
   status: TaskStatus
   workers: number
+  /** Nivelul alocării: 'job'/'project' înseamnă că oamenii sunt pe zona din care
+      face parte taskul, nu neapărat fix pe el. Interfața trebuie să o spună. */
+  level: LabourLevel
   jobName: string
   projectName: string
   deliverables: DeliverableRow[]
+}
+
+/** Oamenii care rămân la nivel de proiect (proiecte fără joburi/taskuri —
+    un caz normal: acolo orele se raportează pe proiect, ca întreg). */
+export interface LabourProject {
+  projectId: string
+  projectName: string
+  workers: number
+  hasTasks: boolean
+  /** ore consumate pe proiect de la început (din pontaj) */
+  hours: number
 }
 
 interface TaskJoinRow {
@@ -27,7 +44,7 @@ interface TaskJoinRow {
 export async function fetchLabourToday(): Promise<LabourTask[]> {
   const { data: labour, error: labourErr } = await supabase
     .from('labour_today')
-    .select('project_id, task_id, workers')
+    .select('project_id, task_id, workers, level')
   if (labourErr) throw labourErr
   if (!labour || labour.length === 0) return []
 
@@ -42,28 +59,64 @@ export async function fetchLabourToday(): Promise<LabourTask[]> {
     .in('id', taskIds)
   if (tasksErr) throw tasksErr
 
-  const workersByTask = new Map(labour.map((l) => [l.task_id as string, l.workers as number]))
+  const byTask = new Map(labour.map((l) => [l.task_id as string, l]))
   return ((tasks ?? []) as unknown as TaskJoinRow[]).map((t) => ({
     taskId: t.id,
     taskName: t.name,
     status: t.status,
-    workers: workersByTask.get(t.id) ?? 0,
+    workers: (byTask.get(t.id)?.workers as number) ?? 0,
+    level: ((byTask.get(t.id)?.level as LabourLevel) ?? 'project'),
     jobName: t.jobs?.name ?? '',
     projectName: t.jobs?.projects?.name ?? '',
     deliverables: [...t.deliverables].sort((a, b) => a.sort_order - b.sort_order),
   }))
 }
 
+/** Proiectele pe care azi sunt oameni, dar fără coborâre pe job/task.
+    Pentru proiectele fără structură (fără joburi și taskuri) aceasta e singura
+    lor apariție pe Șantier — se raportează pe proiect, cu orele consumate. */
+export async function fetchLabourProjects(): Promise<LabourProject[]> {
+  const [{ data: today, error: todayErr }, { data: hours, error: hoursErr }] = await Promise.all([
+    supabase.from('labour_project_today').select('project_id, workers, has_tasks'),
+    supabase.from('labour_project_hours').select('project_id, hours'),
+  ])
+  if (todayErr) throw todayErr
+  if (hoursErr) throw hoursErr
+  if (!today || today.length === 0) return []
+
+  const ids = today.map((r) => r.project_id as string)
+  const { data: projects, error: projErr } = await supabase
+    .from('projects')
+    .select('id, name')
+    .in('id', ids)
+  if (projErr) throw projErr
+
+  const nameById = new Map((projects ?? []).map((p) => [p.id as string, p.name as string]))
+  const hoursById = new Map((hours ?? []).map((h) => [h.project_id as string, Number(h.hours)]))
+
+  return today.map((r) => ({
+    projectId: r.project_id as string,
+    projectName: nameById.get(r.project_id as string) ?? '',
+    workers: Number(r.workers),
+    hasTasks: Boolean(r.has_tasks),
+    hours: hoursById.get(r.project_id as string) ?? 0,
+  }))
+}
+
 export function useLabourToday() {
   const [tasks, setTasks] = useState<LabourTask[]>([])
+  const [projects, setProjects] = useState<LabourProject[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const refetch = useCallback(() => {
     setLoading(true)
     setError(null)
-    fetchLabourToday()
-      .then(setTasks)
+    Promise.all([fetchLabourToday(), fetchLabourProjects()])
+      .then(([t, p]) => {
+        setTasks(t)
+        setProjects(p)
+      })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
   }, [])
@@ -72,7 +125,7 @@ export function useLabourToday() {
     refetch()
   }, [refetch])
 
-  return { tasks, loading, error, refetch }
+  return { tasks, projects, loading, error, refetch }
 }
 
 /** Salvează ziua: RPC-ul face insert + increment done atomic, într-o tranzacție. */

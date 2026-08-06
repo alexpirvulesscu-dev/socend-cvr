@@ -9,6 +9,8 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import {
   closeDay,
+  type LabourLevel,
+  type LabourProject,
   type LabourTask,
   type ProgressJob,
   type ProgressProject,
@@ -36,6 +38,15 @@ const SEG_ON_PHONE = 'w-full [&>button]:min-h-10 [&>button]:flex-1'
 /** „mai sunt 38 m" — restul de construit, cu zecimale doar când există. */
 function remaining(left: number, um: string): string {
   return `mai sunt ${num(left, Number.isInteger(left) ? 0 : 1)} ${um}`
+}
+
+/** „4 oameni azi" vs „4 oameni pe job azi": Pontajul poate trimite echipa pe
+    task, pe job sau pe proiect. Când alocarea e mai sus decât taskul, spunem
+    unde sunt de fapt, ca cifra să nu pară o măsurătoare pe acel task. */
+function oameniLabel(workers: number, level: LabourLevel): string {
+  const cine = workers === 1 ? 'un om' : `${num(workers)} oameni`
+  if (level === 'task') return `${cine} azi`
+  return level === 'job' ? `${cine} pe job azi` : `${cine} pe proiect azi`
 }
 
 /** Progresul (realizat + plan) al unui proiect, calculat doar din schelet. */
@@ -123,14 +134,41 @@ function ProjectChips({
 // ── Ecranul „Azi" ─────────────────────────────────────────────────────────
 function DayView({
   tasks,
+  projects,
   selectedProject,
   onReport,
 }: {
   tasks: LabourTask[]
+  projects: LabourProject[]
   selectedProject: string | null
   onReport: () => void
 }) {
   const visible = tasks.filter((t) => t.projectName === selectedProject)
+  // Proiect fără joburi și taskuri: orele stau pe proiect, ca întreg. Nu e o
+  // lipsă de configurare, e felul în care se urmăresc unele lucrări.
+  const flat = projects.find((p) => p.projectName === selectedProject && !p.hasTasks)
+
+  if (flat) {
+    return (
+      <div className="mx-auto max-w-lg space-y-3 px-4 pb-8 pt-3">
+        <Card>
+          <p className="text-th font-semibold uppercase tracking-[0.07em] text-ink-3">
+            Manoperă pe proiect
+          </p>
+          <h2 className="mt-1 text-card font-semibold leading-tight text-ink-1">
+            {flat.workers === 1 ? 'un om azi' : `${num(flat.workers)} oameni azi`}
+          </h2>
+          <p className="mt-1 text-row text-ink-3">
+            {num(flat.hours)} ore consumate până acum · din Pontaj
+          </p>
+        </Card>
+        <div className="rounded-chip border border-line-2 bg-paper-1 px-4 py-3 text-row leading-relaxed text-ink-2">
+          Proiectul nu are joburi și taskuri în CVR, așa că orele se urmăresc pe proiect, ca
+          întreg. Nu e nimic de raportat aici.
+        </div>
+      </div>
+    )
+  }
 
   return (
     <>
@@ -163,7 +201,7 @@ function DayView({
               </div>
               <h2 className="mt-1 text-card font-semibold leading-tight text-ink-1">{t.taskName}</h2>
               <p className="mt-1 text-row text-ink-3">
-                {t.workers === 1 ? 'un om azi' : `${num(t.workers)} oameni azi`} · din Pontaj
+                {oameniLabel(t.workers, t.level)} · din Pontaj
               </p>
               <div className="mt-2 space-y-1">
                 {t.deliverables.map((d) => {
@@ -508,12 +546,23 @@ const SCREEN_OPTIONS: { value: 'day' | 'progress'; label: string }[] = [
 ]
 
 export function SantierView({ onDataChanged }: { onDataChanged?: () => void }) {
-  const { tasks, loading, error, refetch } = useLabourToday()
+  const { tasks, projects: labourProjects, loading, error, refetch } = useLabourToday()
   const { projects: skeleton } = useSkeletonProgress()
   const [screen, setScreen] = useState<'day' | 'report' | 'progress'>('day')
   const [projectFilter, setProjectFilter] = useState<string | null>(null)
 
-  const projectNames = useMemo(() => [...new Set(tasks.map((t) => t.projectName))], [tasks])
+  // Comutatorul arată TOATE proiectele cu oameni azi: și cele cu taskuri, și
+  // cele urmărite ca întreg (fără joburi/taskuri) — altfel echipele de pe
+  // proiectele plate ar dispărea de pe ecran.
+  const projectNames = useMemo(
+    () => [
+      ...new Set([
+        ...tasks.map((t) => t.projectName),
+        ...labourProjects.filter((p) => !p.hasTasks && p.projectName).map((p) => p.projectName),
+      ]),
+    ],
+    [tasks, labourProjects]
+  )
   const selected = projectFilter ?? projectNames[0] ?? null
   const today = todayIso()
 
@@ -617,7 +666,12 @@ export function SantierView({ onDataChanged }: { onDataChanged?: () => void }) {
               </Card>
             </div>
           )}
-          <DayView tasks={tasks} selectedProject={selected} onReport={() => setScreen('report')} />
+          <DayView
+            tasks={tasks}
+            projects={labourProjects}
+            selectedProject={selected}
+            onReport={() => setScreen('report')}
+          />
         </>
       ) : (
         <ProgressView />
