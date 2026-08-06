@@ -1,71 +1,91 @@
-// Orele lucrate, citite din Pontaj.
+// Orele de manoperă: planul și consumul real din Pontaj.
 //
-// Pontajul înregistrează ore REALE (regular + overtime), pe om și pe zi, dar
-// legate de PROIECT — nu are încă job_id / task_id. Până când Pontajul coboară
-// repartiția la job și task, CVR compară orele doar la nivel de proiect; joburile
-// și taskurile își arată doar orele PLANIFICATE.
+// Regula, pe scurt (0023): orele se numără la nivelul la care au fost
+// repartizate, dar se adună mereu în sus. Dacă echipa e pusă doar pe proiect,
+// orele stau pe proiect — și tot se văd. Dacă e pusă pe un job, jobul adună
+// orele lui plus ale taskurilor lui. Totalul proiectului e tot ce s-a pontat pe
+// el, oricât de adânc a fost repartizat. Nimic din asta nu depinde de livrabile
+// sau de progres.
 //
-// Când Pontajul va scrie job_id/task_id, singurul lucru de schimbat aici e
-// selectul: restul aplicației citește deja prin funcțiile de mai jos.
-import { useEffect, useState } from 'react'
+// Agregarea se face ÎN BAZĂ, prin vederile `cvr_labour_by_*`. Versiunea veche
+// citea toate pontajele din browser și primea doar primele 1.000 (limita
+// PostgREST), deci totalurile erau o felie arbitrară din realitate.
+import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
+/** Orele consumate pe un proiect, defalcate după nivelul repartiției. */
+export interface ProjectHours {
+  /** tot ce s-a pontat pe proiect, la orice nivel */
+  total: number
+  /** din care: repartizate până la task */
+  peTask: number
+  /** din care: repartizate pe job, dar nu pe task */
+  peJob: number
+  /** din care: rămase la nivel de proiect */
+  peProiect: number
+  firstDay: string | null
+  lastDay: string | null
+}
+
 export interface LabourHours {
-  /** ore consumate pe proiect */
-  byProject: Record<string, number>
-  /** ore consumate pe job (gol cât timp Pontajul nu alocă pe job) */
+  byProject: Record<string, ProjectHours>
+  /** ore pe job = orele jobului + ale taskurilor lui */
   byJob: Record<string, number>
-  /** ore consumate pe task (gol cât timp Pontajul nu alocă pe task) */
   byTask: Record<string, number>
 }
 
-const EMPTY: LabourHours = { byProject: {}, byJob: {}, byTask: {} }
+export const EMPTY_HOURS: LabourHours = { byProject: {}, byJob: {}, byTask: {} }
 
-interface Row {
-  project_id: string
-  job_id: string | null
-  task_id: string | null
-  regular_hours: number | null
-  overtime_hours: number | null
+const ZERO: ProjectHours = {
+  total: 0,
+  peTask: 0,
+  peJob: 0,
+  peProiect: 0,
+  firstDay: null,
+  lastDay: null,
 }
 
-/** Orele consumate, pe toate proiectele. Se citește o dată, la montare. */
-export function useLabourHours(): { hours: LabourHours; loading: boolean } {
-  const [hours, setHours] = useState<LabourHours>(EMPTY)
+/** Orele unui proiect, cu zero-uri când nu s-a pontat nimic încă. */
+export function hoursOf(h: LabourHours, projectId: string): ProjectHours {
+  return h.byProject[projectId] ?? ZERO
+}
+
+/** Orele consumate, pe toate proiectele. Se recitesc la fiecare montare. */
+export function useLabourHours(): {
+  hours: LabourHours
+  loading: boolean
+  refetch: () => void
+} {
+  const [hours, setHours] = useState<LabourHours>(EMPTY_HOURS)
   const [loading, setLoading] = useState(true)
+  const [tick, setTick] = useState(0)
+  const refetch = useCallback(() => setTick((n) => n + 1), [])
 
   useEffect(() => {
     let alive = true
     async function load() {
-      // job_id/task_id pot lipsi din tabel (Pontajul nu le-a adăugat încă) —
-      // de aceea le cerem separat și cădem elegant dacă selectul eșuează
-      let rows: Row[] = []
-      const full = await supabase
-        .from('pontaj_timesheets')
-        .select('project_id, job_id, task_id, regular_hours, overtime_hours')
-        .is('deleted_at', null)
-      if (full.error) {
-        const basic = await supabase
-          .from('pontaj_timesheets')
-          .select('project_id, regular_hours, overtime_hours')
-          .is('deleted_at', null)
-        rows = ((basic.data ?? []) as Omit<Row, 'job_id' | 'task_id'>[]).map((r) => ({
-          ...r,
-          job_id: null,
-          task_id: null,
-        }))
-      } else {
-        rows = (full.data ?? []) as Row[]
-      }
+      const [proj, job, task] = await Promise.all([
+        supabase
+          .from('cvr_labour_by_project')
+          .select('project_id, hours, hours_task, hours_job, hours_project, first_day, last_day'),
+        supabase.from('cvr_labour_by_job').select('job_id, hours'),
+        supabase.from('cvr_labour_by_task').select('task_id, hours'),
+      ])
 
       const out: LabourHours = { byProject: {}, byJob: {}, byTask: {} }
-      for (const r of rows) {
-        const h = Number(r.regular_hours ?? 0) + Number(r.overtime_hours ?? 0)
-        if (!h) continue
-        out.byProject[r.project_id] = (out.byProject[r.project_id] ?? 0) + h
-        if (r.job_id) out.byJob[r.job_id] = (out.byJob[r.job_id] ?? 0) + h
-        if (r.task_id) out.byTask[r.task_id] = (out.byTask[r.task_id] ?? 0) + h
+      for (const r of proj.data ?? []) {
+        out.byProject[r.project_id as string] = {
+          total: Number(r.hours) || 0,
+          peTask: Number(r.hours_task) || 0,
+          peJob: Number(r.hours_job) || 0,
+          peProiect: Number(r.hours_project) || 0,
+          firstDay: (r.first_day as string) ?? null,
+          lastDay: (r.last_day as string) ?? null,
+        }
       }
+      for (const r of job.data ?? []) out.byJob[r.job_id as string] = Number(r.hours) || 0
+      for (const r of task.data ?? []) out.byTask[r.task_id as string] = Number(r.hours) || 0
+
       if (alive) {
         setHours(out)
         setLoading(false)
@@ -75,15 +95,60 @@ export function useLabourHours(): { hours: LabourHours; loading: boolean } {
     return () => {
       alive = false
     }
-  }, [])
+  }, [tick])
 
-  return { hours, loading }
+  return { hours, loading, refetch }
 }
 
-/** Tariful la care s-a vândut manopera. Orele planificate = valoare manoperă / tarif. */
+/** O zi de pontaj pe un proiect. */
+export interface LabourDay {
+  work_date: string
+  hours: number
+}
+
+/** Orele zi cu zi ale unui proiect, pentru comparația plan vs consumat. */
+export function useLabourDays(projectId: string | null): {
+  days: LabourDay[]
+  loading: boolean
+} {
+  const [days, setDays] = useState<LabourDay[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let alive = true
+    if (!projectId) {
+      setDays([])
+      setLoading(false)
+      return
+    }
+    setLoading(true)
+    void (async () => {
+      const { data } = await supabase
+        .from('cvr_labour_by_day')
+        .select('work_date, hours')
+        .eq('project_id', projectId)
+        .order('work_date')
+      if (!alive) return
+      setDays(
+        (data ?? []).map((r) => ({
+          work_date: r.work_date as string,
+          hours: Number(r.hours) || 0,
+        }))
+      )
+      setLoading(false)
+    })()
+    return () => {
+      alive = false
+    }
+  }, [projectId])
+
+  return { days, loading }
+}
+
+/** Tariful la care s-a vândut manopera, când planul se deduce din lei. */
 export const TARIF_ORA = 75
 
-/** Oameni-zile → ore (o zi de om = 8 ore). Planul e stocat în oameni-zile. */
+/** Oameni-zile → ore (o zi de om = 8 ore). Taskurile stochează oameni-zile. */
 export function manDaysToHours(manDays: number | null | undefined): number {
   return (Number(manDays) || 0) * 8
 }

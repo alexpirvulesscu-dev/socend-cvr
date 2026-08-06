@@ -97,6 +97,8 @@ export interface JobRow {
   start_date: string
   end_date: string
   sort_order: number
+  // orele de manoperă alocate jobului (0023); null = se însumează taskurile
+  planned_hours: number | null
   // planul INIȚIAL, înghețat la creare (0017); nu se schimbă din Gantt
   baseline_start_date: string | null
   baseline_end_date: string | null
@@ -172,6 +174,8 @@ export interface ProjectRow {
   sort_order: number
   /** garanția de bună execuție reținută de client, în procente (0019) */
   retentie_pct: number
+  /** orele de manoperă alocate proiectului la deschidere (0023) */
+  planned_hours: number | null
   jobs: JobRow[]
   // Facturarea NU mai stă pe proiect: e suma situațiilor joburilor (0017).
   // Tabelul `cvr_billing` rămâne în DB ca istoric, dar nu se mai citește.
@@ -371,9 +375,9 @@ export async function fetchPnlCosts(): Promise<Map<string, PnlCosts>> {
 }
 
 const TREE_SELECT = `
-  id, name, client, billing_mode, contract_value, start_date, end_date, active, location, pnl_proiect_id, is_small, sort_order, retentie_pct,
+  id, name, client, billing_mode, contract_value, start_date, end_date, active, location, pnl_proiect_id, is_small, sort_order, retentie_pct, planned_hours,
   jobs (
-    id, name, start_date, end_date, sort_order, baseline_start_date, baseline_end_date,
+    id, name, start_date, end_date, sort_order, baseline_start_date, baseline_end_date, planned_hours,
     tasks (
       id, name, value, status, sort_order, planned_man_days, start_date, end_date, target_invoice_date,
       deliverables ( id, name, um, qty_total, qty_done, weight, sort_order, planned_man_days )
@@ -384,7 +388,9 @@ const TREE_SELECT = `
   )
 `
 
-/** Citește tot arborele, cu KPI-urile calculate la zi. */
+/** Citește tot arborele, cu KPI-urile calculate la zi.
+    Proiectele de regie (is_overhead: paza) nu sunt lucrări și nu apar în CVR —
+    costul lor merge la overheads, iar Pontajul le folosește mai departe. */
 export async function fetchProjectTree(): Promise<ProjectWithKpis[]> {
   const { data, error } = await supabase
     .from('projects')

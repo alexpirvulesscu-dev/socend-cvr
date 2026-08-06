@@ -634,3 +634,24 @@ export async function createProject(p: NewProject): Promise<string> {
 
   return projectId
 }
+
+/**
+ * Orele de manoperă alocate unui proiect (0023). Gol = fără plan, iar atunci
+ * planul se însumează din joburi. Nu atinge P&L-ul: e un număr al CVR-ului.
+ */
+export async function updateProjectPlannedHours(
+  id: string,
+  hours: number | null
+): Promise<void> {
+  const { error } = await supabase
+    .from('projects')
+    .update({ planned_hours: hours })
+    .eq('id', id)
+  if (error) throw error
+}
+
+/** Orele alocate unui job (0023). Gol = se însumează planul taskurilor lui. */
+export async function updateJobPlannedHours(id: string, hours: number | null): Promise<void> {
+  const { error } = await supabase.from('jobs').update({ planned_hours: hours }).eq('id', id)
+  if (error) throw error
+}
