@@ -8,10 +8,10 @@
 // Regula ecranului: nicio sumă, niciun nume de om, doar taskurile cu manoperă azi.
 import { useMemo, useState, type ReactNode } from 'react'
 import {
+  type AllocRow,
   closeDay,
-  type LabourLevel,
+  countWorkers,
   type LabourProject,
-  type LabourTask,
   type ProgressJob,
   type ProgressProject,
   useLabourToday,
@@ -40,14 +40,11 @@ function remaining(left: number, um: string): string {
   return `mai sunt ${num(left, Number.isInteger(left) ? 0 : 1)} ${um}`
 }
 
-/** „4 oameni azi" vs „4 oameni pe job azi": Pontajul poate trimite echipa pe
-    task, pe job sau pe proiect. Când alocarea e mai sus decât taskul, spunem
-    unde sunt de fapt, ca cifra să nu pară o măsurătoare pe acel task. */
-function oameniLabel(workers: number, level: LabourLevel): string {
-  const cine = workers === 1 ? 'un om' : `${num(workers)} oameni`
-  if (level === 'task') return `${cine} azi`
-  return level === 'job' ? `${cine} pe job azi` : `${cine} pe proiect azi`
+/** „un om" / „4 oameni" — forma corectă, folosită peste tot pe șantier. */
+function oameni(n: number): string {
+  return n === 1 ? 'un om' : `${num(n)} oameni`
 }
+
 
 /** Progresul (realizat + plan) al unui proiect, calculat doar din schelet. */
 function projectProgress(p: ProgressProject, today: string) {
@@ -101,140 +98,207 @@ function DayBand({
   )
 }
 
-/** Comutatorul de proiect din bandă — pastile albe pe verde, 40px înălțime. */
-function ProjectChips({
-  projectNames,
-  selected,
-  onSelect,
+/* Comutatorul de proiecte (pastilele din bandă) a fost înlocuit de desfășurarea
+   proiect → job → task: navigarea se face acum din carduri, nu din pastile. */
+
+// ── Ecranul „Azi" — se desfășoară: proiect → joburi → taskuri ─────────────
+// Regula de citire: fiecare card arată oamenii de la NIVELUL lui, numărați o
+// singură dată. Un om trimis pe proiect se vede pe cardul proiectului, nu
+// repetat pe fiecare job și task de dedesubt (așa părea că sunt de trei ori
+// mai mulți oameni pe șantier decât sunt).
+
+/** Un rând de listă cu titlu, subtitlu și săgeată — cardul de navigare. */
+function DrillCard({
+  caption,
+  title,
+  sub,
+  onClick,
 }: {
-  projectNames: string[]
-  selected: string | null
-  onSelect: (name: string) => void
+  caption?: string
+  title: string
+  sub?: string
+  onClick?: () => void
 }) {
   return (
-    <div className="mt-5 flex gap-2 overflow-x-auto pb-0.5">
-      {projectNames.map((name) => (
-        <button
-          key={name}
-          onClick={() => onSelect(name)}
-          aria-pressed={name === selected}
-          className={`min-h-10 shrink-0 whitespace-nowrap rounded-full px-4 text-row font-semibold transition-colors duration-[120ms] ease-std ${
-            name === selected
-              ? 'bg-paper-0 text-accent-ink'
-              : 'bg-paper-0/15 text-paper-0 hover:bg-paper-0/25'
-          }`}
-        >
-          {name.split(' ').slice(0, 2).join(' ')}
-        </button>
-      ))}
-    </div>
+    <Card onClick={onClick}>
+      <div className="flex items-center justify-between gap-2">
+        {caption ? (
+          <p className="text-th font-semibold uppercase tracking-[0.07em] text-ink-3">{caption}</p>
+        ) : (
+          <span />
+        )}
+        {onClick && (
+          <span aria-hidden className="text-ink-4">
+            ›
+          </span>
+        )}
+      </div>
+      <h2 className="mt-1 text-card font-semibold leading-tight text-ink-1">{title}</h2>
+      {sub && <p className="mt-1 text-row text-ink-3">{sub}</p>}
+    </Card>
   )
 }
 
-// ── Ecranul „Azi" ─────────────────────────────────────────────────────────
-function DayView({
-  tasks,
-  projects,
-  selectedProject,
-  onReport,
+/** Nivelul 1 — proiectele pe care sunt oameni azi. */
+function ProjectList({
+  skeleton,
+  labourProjects,
+  alloc,
+  onOpen,
 }: {
-  tasks: LabourTask[]
-  projects: LabourProject[]
-  selectedProject: string | null
-  onReport: () => void
+  skeleton: ProgressProject[]
+  labourProjects: LabourProject[]
+  alloc: AllocRow[]
+  onOpen: (projectId: string) => void
 }) {
-  const visible = tasks.filter((t) => t.projectName === selectedProject)
-  // Proiect fără joburi și taskuri: orele stau pe proiect, ca întreg. Nu e o
-  // lipsă de configurare, e felul în care se urmăresc unele lucrări.
-  const flat = projects.find((p) => p.projectName === selectedProject && !p.hasTasks)
+  const projectIds = useMemo(() => [...new Set(alloc.map((a) => a.projectId))], [alloc])
 
-  if (flat) {
+  if (projectIds.length === 0) {
     return (
-      <div className="mx-auto max-w-lg space-y-3 px-4 pb-8 pt-3">
-        <Card>
-          <p className="text-th font-semibold uppercase tracking-[0.07em] text-ink-3">
-            Manoperă pe proiect
-          </p>
-          <h2 className="mt-1 text-card font-semibold leading-tight text-ink-1">
-            {flat.workers === 1 ? 'un om azi' : `${num(flat.workers)} oameni azi`}
-          </h2>
-          <p className="mt-1 text-row text-ink-3">
-            {num(flat.hours)} ore consumate până acum · din Pontaj
-          </p>
+      <div className="mx-auto max-w-lg px-4 pt-4">
+        <Card className="px-0 py-0">
+          <EmptyState title="Nicio echipă pe teren azi">
+            Când Pontaj trimite oameni pe un proiect, el apare aici.
+          </EmptyState>
         </Card>
-        <div className="rounded-chip border border-line-2 bg-paper-1 px-4 py-3 text-row leading-relaxed text-ink-2">
-          Proiectul nu are joburi și taskuri în CVR, așa că orele se urmăresc pe proiect, ca
-          întreg. Nu e nimic de raportat aici.
-        </div>
       </div>
     )
   }
 
   return (
-    <>
-      {tasks.length === 0 ? (
-        <div className="mx-auto max-w-lg px-4 pt-4">
-          <Card className="px-0 py-0">
-            <EmptyState title="Nicio echipă pe teren azi">
-              Când Pontaj arată manoperă pe un task, el apare aici.
-            </EmptyState>
-          </Card>
-        </div>
-      ) : (
-        <div className="mx-auto max-w-lg space-y-3 px-4 pb-28 pt-3">
-          <div className="rounded-chip border border-line-2 bg-paper-1 px-4 py-3 text-row leading-relaxed text-ink-2">
-            <span className="font-semibold text-ink-1">Pontaj spune:</span> azi s-a înregistrat
-            manoperă pe {visible.length === 1 ? 'un task' : `${visible.length} taskuri`} din acest
-            proiect. Oamenii se gestionează în Pontaj, nu aici. Taskurile fără oameni azi nu sunt
-            întrebate.
-          </div>
+    <div className="mx-auto max-w-lg space-y-3 px-4 pb-8 pt-3">
+      {projectIds.map((pid) => {
+        const p = skeleton.find((x) => x.id === pid)
+        const flat = labourProjects.find((x) => x.projectId === pid)
+        const total = countWorkers(alloc, { projectId: pid })
+        const hasJobs = (p?.jobs.length ?? 0) > 0
+        const name = p?.name ?? flat?.projectName ?? 'Proiect'
 
-          {visible.map((t) => (
-            <Card key={t.taskId} onClick={onReport}>
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-th font-semibold uppercase tracking-[0.07em] text-ink-3">
-                  {t.jobName}
-                </p>
-                <span aria-hidden className="text-ink-4">
-                  ›
-                </span>
-              </div>
-              <h2 className="mt-1 text-card font-semibold leading-tight text-ink-1">{t.taskName}</h2>
-              <p className="mt-1 text-row text-ink-3">
-                {oameniLabel(t.workers, t.level)} · din Pontaj
-              </p>
-              <div className="mt-2 space-y-1">
-                {t.deliverables.map((d) => {
-                  const left = Number(d.qty_total) - Number(d.qty_done)
-                  if (left <= 0) return null
-                  return (
-                    <p key={d.id} className="text-row text-ink-3">
-                      {d.name} ·{' '}
-                      <span className="font-bold text-ink-1">{remaining(left, d.um)}</span>
-                    </p>
-                  )
-                })}
-              </div>
-            </Card>
-          ))}
+        // Proiect fără joburi: orele stau pe proiect, ca întreg — nu e nimic de
+        // desfășurat, deci cardul nu se deschide, doar spune unde suntem.
+        if (!hasJobs) {
+          return (
+            <DrillCard
+              key={pid}
+              caption="Urmărit pe proiect"
+              title={name}
+              sub={`${oameni(total)} azi${
+                flat && flat.hours > 0 ? ` · ${num(flat.hours)} ore până acum` : ''
+              }`}
+            />
+          )
+        }
 
-          {visible.length === 0 && (
-            <Card className="px-0 py-0">
-              <EmptyState title="Niciun task cu manoperă azi pe acest proiect." />
-            </Card>
-          )}
-        </div>
-      )}
+        const onProject = countWorkers(alloc, { projectId: pid, jobId: null, taskId: null })
+        return (
+          <DrillCard
+            key={pid}
+            caption={`${p!.jobs.length === 1 ? 'un job' : `${num(p!.jobs.length)} joburi`}`}
+            title={name}
+            sub={`${oameni(total)} azi${
+              onProject > 0 ? ` · ${oameni(onProject)} pe proiect, fără job` : ''
+            }`}
+            onClick={() => onOpen(pid)}
+          />
+        )
+      })}
+    </div>
+  )
+}
 
-      {visible.length > 0 && (
-        <div className="fixed inset-x-0 bottom-0 border-t border-line-2 bg-paper-2/90 p-4 backdrop-blur-xl">
-          {/* 52px înălțime: ținta de atingere de pe telefon, cu mănuși */}
-          <PrimaryButton onClick={onReport} className="mx-auto block min-h-13 w-full max-w-lg">
-            Închide ziua · {visible.length === 1 ? 'un task' : `${visible.length} taskuri`}
-          </PrimaryButton>
+/** Nivelul 2 — joburile proiectului. */
+function JobList({
+  project,
+  alloc,
+  onOpen,
+}: {
+  project: ProgressProject
+  alloc: AllocRow[]
+  onOpen: (jobId: string) => void
+}) {
+  const onProject = countWorkers(alloc, { projectId: project.id, jobId: null, taskId: null })
+
+  return (
+    <div className="mx-auto max-w-lg space-y-3 px-4 pb-8 pt-3">
+      {onProject > 0 && (
+        <div className="rounded-chip border border-line-2 bg-paper-1 px-4 py-3 text-row leading-relaxed text-ink-2">
+          <span className="font-semibold text-ink-1">{oameni(onProject)}</span> sunt trimiși pe
+          proiect, fără job anume. Repartizarea pe job sau task se face în Pontaj.
         </div>
       )}
-    </>
+      {project.jobs.map((j) => {
+        const workers = countWorkers(alloc, { projectId: project.id, jobId: j.id })
+        return (
+          <DrillCard
+            key={j.id}
+            caption={j.tasks.length === 1 ? 'un task' : `${num(j.tasks.length)} taskuri`}
+            title={j.name}
+            sub={workers > 0 ? `${oameni(workers)} azi pe acest job` : 'niciun om azi pe acest job'}
+            onClick={() => onOpen(j.id)}
+          />
+        )
+      })}
+      {project.jobs.length === 0 && (
+        <Card className="px-0 py-0">
+          <EmptyState title="Proiectul nu are joburi în CVR." />
+        </Card>
+      )}
+    </div>
+  )
+}
+
+/** Nivelul 3 — taskurile jobului, cu ce a mai rămas de construit. */
+function TaskList({
+  project,
+  job,
+  alloc,
+  onOpen,
+}: {
+  project: ProgressProject
+  job: ProgressJob
+  alloc: AllocRow[]
+  onOpen: (taskId: string) => void
+}) {
+  const onJob = countWorkers(alloc, { projectId: project.id, jobId: job.id, taskId: null })
+
+  return (
+    <div className="mx-auto max-w-lg space-y-3 px-4 pb-8 pt-3">
+      {onJob > 0 && (
+        <div className="rounded-chip border border-line-2 bg-paper-1 px-4 py-3 text-row leading-relaxed text-ink-2">
+          <span className="font-semibold text-ink-1">{oameni(onJob)}</span> sunt trimiși pe job,
+          fără task anume. Poți raporta pe oricare task de mai jos.
+        </div>
+      )}
+      {job.tasks.map((t) => {
+        const workers = countWorkers(alloc, { taskId: t.id })
+        const left = t.deliverables.reduce(
+          (s, d) => s + Math.max(0, Number(d.qty_total) - Number(d.qty_done)),
+          0
+        )
+        const sub =
+          t.deliverables.length === 0
+            ? 'fără livrabile în CVR'
+            : workers > 0
+              ? `${oameni(workers)} azi pe acest task`
+              : left > 0
+                ? `${num(t.deliverables.length)} livrabile de raportat`
+                : 'totul raportat ✓'
+        return (
+          <DrillCard
+            key={t.id}
+            caption={t.status === 'in_lucru' ? 'în lucru' : t.status === 'finalizat' ? 'finalizat' : 'neînceput'}
+            title={t.name}
+            sub={sub}
+            onClick={() => onOpen(t.id)}
+          />
+        )
+      })}
+      {job.tasks.length === 0 && (
+        <Card className="px-0 py-0">
+          <EmptyState title="Jobul nu are taskuri în CVR." />
+        </Card>
+      )}
+    </div>
   )
 }
 
@@ -277,21 +341,27 @@ function Stepper({
   )
 }
 
-// ── Ecranul „Ce s-a construit azi" ────────────────────────────────────────
+// ── Ecranul „Ce s-a construit azi" — un task pe ecran, cu sărit între ele ──
+// Cantitățile introduse se păstrează cât timp treci de la un task la altul și
+// se salvează toate odată, la final.
 function ReportView({
-  tasks,
+  job,
+  startTaskId,
   onBack,
   onSaved,
 }: {
-  tasks: LabourTask[]
+  job: ProgressJob
+  startTaskId: string
   onBack: () => void
   onSaved: () => void
 }) {
+  const [idx, setIdx] = useState(() => Math.max(0, job.tasks.findIndex((t) => t.id === startTaskId)))
   const [qty, setQty] = useState<Record<string, number>>({})
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
 
+  const task = job.tasks[idx]
   const totalRows = useMemo(() => Object.values(qty).filter((v) => v > 0).length, [qty])
 
   async function save() {
@@ -346,14 +416,39 @@ function ReportView({
       />
 
       <div className="mx-auto max-w-lg space-y-3 px-4 pt-4">
-        {tasks.map((t) => (
-          <Card key={t.taskId}>
-            <p className="text-th font-semibold uppercase tracking-[0.07em] text-ink-3">
-              {t.jobName}
+        {/* Sări de la un task la altul fără să pierzi ce ai introdus */}
+        <div className="flex items-center justify-between gap-2">
+          <GhostButton
+            onClick={() => setIdx((i) => Math.max(0, i - 1))}
+            disabled={idx === 0}
+            className="min-h-10"
+          >
+            ‹ Taskul anterior
+          </GhostButton>
+          <span className="shrink-0 text-sub text-ink-3">
+            {num(idx + 1)} din {num(job.tasks.length)}
+          </span>
+          <GhostButton
+            onClick={() => setIdx((i) => Math.min(job.tasks.length - 1, i + 1))}
+            disabled={idx >= job.tasks.length - 1}
+            className="min-h-10"
+          >
+            Taskul următor ›
+          </GhostButton>
+        </div>
+
+        <Card>
+          <p className="text-th font-semibold uppercase tracking-[0.07em] text-ink-3">{job.name}</p>
+          <h2 className="mt-1 text-card font-semibold text-ink-1">{task.name}</h2>
+
+          {task.deliverables.length === 0 ? (
+            <p className="mt-3 border-t border-line-1 pt-3 text-row leading-relaxed text-ink-2">
+              Taskul nu are livrabile în CVR, deci nu există cantități de raportat. Livrabilele
+              (ce se măsoară și cât e total) se adaugă de la birou, în configurarea proiectului.
             </p>
-            <h2 className="mt-1 text-card font-semibold text-ink-1">{t.taskName}</h2>
+          ) : (
             <div className="mt-3 space-y-3">
-              {t.deliverables.map((d) => {
+              {task.deliverables.map((d) => {
                 const left = Math.max(0, Number(d.qty_total) - Number(d.qty_done))
                 return (
                   <div
@@ -375,8 +470,8 @@ function ReportView({
                 )
               })}
             </div>
-          </Card>
-        ))}
+          )}
+        </Card>
         {error && <ErrorStrip message={error} />}
       </div>
 
@@ -386,7 +481,11 @@ function ReportView({
           disabled={busy || totalRows === 0}
           className="mx-auto block min-h-13 w-full max-w-lg"
         >
-          {busy ? 'Se salvează…' : 'Salvează ziua'}
+          {busy
+            ? 'Se salvează…'
+            : totalRows === 0
+              ? 'Salvează ziua'
+              : `Salvează ziua · ${totalRows === 1 ? 'o cantitate' : `${num(totalRows)} cantități`}`}
         </PrimaryButton>
       </div>
     </div>
@@ -546,31 +645,34 @@ const SCREEN_OPTIONS: { value: 'day' | 'progress'; label: string }[] = [
 ]
 
 export function SantierView({ onDataChanged }: { onDataChanged?: () => void }) {
-  const { tasks, projects: labourProjects, loading, error, refetch } = useLabourToday()
+  const { projects: labourProjects, alloc, loading, error, refetch } = useLabourToday()
   const { projects: skeleton } = useSkeletonProgress()
   const [screen, setScreen] = useState<'day' | 'report' | 'progress'>('day')
-  const [projectFilter, setProjectFilter] = useState<string | null>(null)
+  // Unde suntem în desfășurare: nimic = lista de proiecte, apoi job, apoi task.
+  const [openProject, setOpenProject] = useState<string | null>(null)
+  const [openJob, setOpenJob] = useState<string | null>(null)
+  const [openTask, setOpenTask] = useState<string | null>(null)
 
-  // Comutatorul arată TOATE proiectele cu oameni azi: și cele cu taskuri, și
-  // cele urmărite ca întreg (fără joburi/taskuri) — altfel echipele de pe
-  // proiectele plate ar dispărea de pe ecran.
-  const projectNames = useMemo(
-    () => [
-      ...new Set([
-        ...tasks.map((t) => t.projectName),
-        ...labourProjects.filter((p) => !p.hasTasks && p.projectName).map((p) => p.projectName),
-      ]),
-    ],
-    [tasks, labourProjects]
-  )
-  const selected = projectFilter ?? projectNames[0] ?? null
   const today = todayIso()
 
-  const progress = useMemo(() => {
-    if (!selected) return null
-    const p = skeleton.find((x) => x.name === selected)
-    return p ? projectProgress(p, today) : null
-  }, [skeleton, selected, today])
+  const project = useMemo(
+    () => (openProject ? (skeleton.find((p) => p.id === openProject) ?? null) : null),
+    [skeleton, openProject]
+  )
+  const job = useMemo(
+    () => (project && openJob ? (project.jobs.find((j) => j.id === openJob) ?? null) : null),
+    [project, openJob]
+  )
+  const progress = useMemo(
+    () => (project ? projectProgress(project, today) : null),
+    [project, today]
+  )
+
+  function backToProjects() {
+    setOpenProject(null)
+    setOpenJob(null)
+    setOpenTask(null)
+  }
 
   if (loading) {
     return (
@@ -601,12 +703,14 @@ export function SantierView({ onDataChanged }: { onDataChanged?: () => void }) {
     )
   }
 
-  if (screen === 'report') {
+  if (screen === 'report' && job && openTask) {
     return (
       <ReportView
-        tasks={tasks.filter((t) => t.projectName === selected)}
+        job={job}
+        startTaskId={openTask}
         onBack={() => {
           setScreen('day')
+          setOpenTask(null)
           refetch()
         }}
         onSaved={() => {
@@ -620,15 +724,22 @@ export function SantierView({ onDataChanged }: { onDataChanged?: () => void }) {
   return (
     <div className="min-h-screen bg-paper-2">
       {screen === 'day' ? (
-        <DayBand caption="Șantier · raport zilnic" title={azi()}>
-          {projectNames.length > 0 && (
-            <ProjectChips
-              projectNames={projectNames}
-              selected={selected}
-              onSelect={setProjectFilter}
-            />
-          )}
-        </DayBand>
+        // Titlul benzii spune unde ești: ziua → proiectul → jobul. Întoarcerea
+        // urcă un singur nivel, ca pe telefon să nu te pierzi.
+        <DayBand
+          caption={project ? undefined : 'Șantier · raport zilnic'}
+          title={job ? job.name : (project?.name ?? azi())}
+          back={
+            project ? (
+              <button
+                onClick={() => (job ? setOpenJob(null) : backToProjects())}
+                className="-ml-1 inline-flex min-h-10 items-center gap-1.5 rounded-btn px-1 text-row font-semibold text-paper-0/70 transition-colors duration-[120ms] ease-std hover:text-paper-0"
+              >
+                <span aria-hidden>←</span> {job ? project.name : azi()}
+              </button>
+            ) : undefined
+          }
+        />
       ) : (
         <DayBand caption="Șantier · progres lucrări" title="Unde suntem?">
           <p className="mt-1.5 text-sub text-paper-0/70">realizat · ținta la zi · totalul</p>
@@ -646,12 +757,12 @@ export function SantierView({ onDataChanged }: { onDataChanged?: () => void }) {
 
       {screen === 'day' ? (
         <>
-          {progress && selected && (
+          {progress && project && (
             <div className="mx-auto max-w-lg px-4 pt-3">
               <Card>
                 <div className="flex items-baseline justify-between gap-2">
                   <span className="min-w-0 truncate text-card font-semibold text-ink-1">
-                    {selected}
+                    {project.name}
                   </span>
                   <span className="shrink-0 text-row tabular-nums text-ink-3">
                     <span className="font-bold text-ink-1">{pct(progress.donePct)}</span> · plan{' '}
@@ -666,12 +777,29 @@ export function SantierView({ onDataChanged }: { onDataChanged?: () => void }) {
               </Card>
             </div>
           )}
-          <DayView
-            tasks={tasks}
-            projects={labourProjects}
-            selectedProject={selected}
-            onReport={() => setScreen('report')}
-          />
+          {!project ? (
+            <ProjectList
+              skeleton={skeleton}
+              labourProjects={labourProjects}
+              alloc={alloc}
+              onOpen={(id) => {
+                setOpenProject(id)
+                setOpenJob(null)
+              }}
+            />
+          ) : !job ? (
+            <JobList project={project} alloc={alloc} onOpen={(id) => setOpenJob(id)} />
+          ) : (
+            <TaskList
+              project={project}
+              job={job}
+              alloc={alloc}
+              onOpen={(id) => {
+                setOpenTask(id)
+                setScreen('report')
+              }}
+            />
+          )}
         </>
       ) : (
         <ProgressView />

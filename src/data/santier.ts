@@ -72,6 +72,51 @@ export async function fetchLabourToday(): Promise<LabourTask[]> {
   }))
 }
 
+/** O linie de repartiție de azi: un om, la nivelul la care a fost trimis.
+    Din ea se numără oamenii pe proiect, pe job și pe task, fără dublare —
+    de aceea ecranul nu mai repetă „4 oameni" pe fiecare card frate. */
+export interface AllocRow {
+  workerId: string
+  projectId: string
+  jobId: string | null
+  taskId: string | null
+}
+
+export async function fetchAllocToday(): Promise<AllocRow[]> {
+  const today = new Date().toISOString().slice(0, 10)
+  const { data, error } = await supabase
+    .from('labour_alloc')
+    .select('worker_id, project_id, job_id, task_id')
+    .eq('work_date', today)
+  if (error) throw error
+  return (data ?? []).map((r) => ({
+    workerId: r.worker_id as string,
+    projectId: r.project_id as string,
+    jobId: (r.job_id as string | null) ?? null,
+    taskId: (r.task_id as string | null) ?? null,
+  }))
+}
+
+/** Câți oameni sunt azi pe un proiect / job / task, numărați o singură dată.
+    `null` înseamnă „exact la acest nivel": { jobId: null, taskId: null } = oamenii
+    trimiși pe proiect, fără job și fără task. */
+export function countWorkers(
+  rows: AllocRow[],
+  where: { projectId?: string; jobId?: string | null; taskId?: string | null }
+): number {
+  const ids = new Set(
+    rows
+      .filter(
+        (r) =>
+          (where.projectId === undefined || r.projectId === where.projectId) &&
+          (where.jobId === undefined || r.jobId === where.jobId) &&
+          (where.taskId === undefined || r.taskId === where.taskId)
+      )
+      .map((r) => r.workerId)
+  )
+  return ids.size
+}
+
 /** Proiectele pe care azi sunt oameni, dar fără coborâre pe job/task.
     Pentru proiectele fără structură (fără joburi și taskuri) aceasta e singura
     lor apariție pe Șantier — se raportează pe proiect, cu orele consumate. */
@@ -106,16 +151,18 @@ export async function fetchLabourProjects(): Promise<LabourProject[]> {
 export function useLabourToday() {
   const [tasks, setTasks] = useState<LabourTask[]>([])
   const [projects, setProjects] = useState<LabourProject[]>([])
+  const [alloc, setAlloc] = useState<AllocRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const refetch = useCallback(() => {
     setLoading(true)
     setError(null)
-    Promise.all([fetchLabourToday(), fetchLabourProjects()])
-      .then(([t, p]) => {
+    Promise.all([fetchLabourToday(), fetchLabourProjects(), fetchAllocToday()])
+      .then(([t, p, a]) => {
         setTasks(t)
         setProjects(p)
+        setAlloc(a)
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
@@ -125,7 +172,7 @@ export function useLabourToday() {
     refetch()
   }, [refetch])
 
-  return { tasks, projects, loading, error, refetch }
+  return { tasks, projects, alloc, loading, error, refetch }
 }
 
 /** Salvează ziua: RPC-ul face insert + increment done atomic, într-o tranzacție. */
@@ -180,6 +227,7 @@ export async function fetchSkeletonProgress(): Promise<ProgressProject[]> {
        )`
     )
     .eq('active', true) // proiectele finalizate nu apar pe șantier
+    .eq('is_overhead', false) // paza nu e lucrare — nu se raportează nimic pe ea
     .order('name')
   if (error) throw error
   return ((data ?? []) as unknown as ProgressProject[]).map((p) => ({
