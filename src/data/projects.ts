@@ -389,6 +389,9 @@ export async function fetchProjectTree(): Promise<ProjectWithKpis[]> {
   const { data, error } = await supabase
     .from('projects')
     .select(TREE_SELECT)
+    // Proiectele de regie (paza) nu sunt lucrări: costul lor merge la overheads,
+    // iar Pontajul le folosește mai departe. În CVR nu apar deloc.
+    .eq('is_overhead', false)
     .order('sort_order')
     .order('name')
   if (error) throw error
