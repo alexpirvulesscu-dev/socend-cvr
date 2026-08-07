@@ -33,6 +33,7 @@ function makeRawProject(over: Partial<ProjectRow> = {}): ProjectRow {
     is_small: false,
     sort_order: 1,
     retentie_pct: 0,
+    planned_hours: null,
     jobs: [
       {
         id: 'j1',
@@ -42,6 +43,7 @@ function makeRawProject(over: Partial<ProjectRow> = {}): ProjectRow {
         sort_order: 1,
         baseline_start_date: '2026-07-01',
         baseline_end_date: '2026-07-20',
+        planned_hours: null,
         cvr_job_billing: { depus: 10_000, certificat: 5_000, facturat: 5_000, incasat: 5_000 },
         tasks: [
           {

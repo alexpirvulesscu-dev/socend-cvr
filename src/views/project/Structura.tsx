@@ -16,7 +16,7 @@ import {
   toneOf,
 } from '../../components/ui'
 import { toast } from '../../components/Toast'
-import { TARIF_ORA, manDaysToHours } from '../../data/labour'
+import { hoursOf, manDaysToHours, planOfJob, type LabourHours } from '../../data/labour'
 import type { Selection } from '../../lib/selection'
 import { JobDetail, ProjectDetail, TaskDetail } from './Detalii'
 
@@ -127,9 +127,9 @@ function JobRow({
   const k = job.kpis
   const late = k.behindDays >= 2
   const inLucru = job.tasks.filter((t) => t.status === 'in_lucru').length
-  // în arbore, joburile și taskurile se măsoară în ORE (manopera vândută / tarif),
-  // nu în lei de contract — banii de contract se văd doar la nivel de proiect
-  const oreJob = Math.round((job.budgetByCategory.manopera ?? 0) / TARIF_ORA)
+  // în arbore, joburile și taskurile se măsoară în ORE — aceeași regulă ca în
+  // cardul de detaliu: numărul declarat pe job, altfel suma taskurilor lui
+  const oreJob = Math.round(planOfJob(job))
   return (
     <div className="flex items-center gap-3">
       <button
@@ -573,6 +573,7 @@ export function StructuraProiect({
   onRefetch,
   patchEntity,
   onOpenCronologic,
+  hours,
 }: {
   p: ProjectWithKpis
   sel: Selection
@@ -581,6 +582,8 @@ export function StructuraProiect({
   onRefetch: () => void
   patchEntity: (patch: EntityPatch) => void
   onOpenCronologic: (projectId: string, jobId: string) => void
+  /** orele pontate, pe fiecare nivel (0023) */
+  hours: LabourHours
 }) {
   const job = sel.jobId ? p.jobs.find((j) => j.id === sel.jobId) : undefined
   const task = job && sel.taskId ? job.tasks.find((t) => t.id === sel.taskId) : undefined
@@ -610,6 +613,7 @@ export function StructuraProiect({
             save={save}
             onRefetch={onRefetch}
             onSelect={onSelect}
+            oreLucrate={hours.byTask[task.id] ?? 0}
           />
         ) : job ? (
           <JobDetail
@@ -619,9 +623,16 @@ export function StructuraProiect({
             onRefetch={onRefetch}
             onSelect={onSelect}
             onOpenCronologic={onOpenCronologic}
+            oreLucrate={hours.byJob[job.id] ?? 0}
           />
         ) : (
-          <ProjectDetail p={p} save={save} onRefetch={onRefetch} onSelect={onSelect} />
+          <ProjectDetail
+            p={p}
+            save={save}
+            onRefetch={onRefetch}
+            onSelect={onSelect}
+            oreLucrate={hoursOf(hours, p.id).total}
+          />
         )}
       </div>
     </div>

@@ -119,7 +119,8 @@ export function StatCard({
   className = '',
 }: {
   label: string
-  value: string
+  /** de obicei text; poate fi și un câmp editabil (vezi fila Manoperă) */
+  value: ReactNode
   tone?: Tone
   pills?: { text: string; tone?: Tone }[]
   footnote?: string

@@ -6,14 +6,15 @@ import type { EntityPatch, ProjectWithKpis } from '../data/projects'
 import { todayIso } from '../data/projects'
 import type { VariationRow } from '../data/variations'
 import { makeSave } from '../data/save'
-import { useLabourHours } from '../data/labour'
+import { hoursOf, manDaysToHours, useLabourHours } from '../data/labour'
 import {
   cashColor,
   costColor,
   marginColor,
   scheduleColor,
 } from '../domain/kpi'
-import { compact, dataRo, pct } from '../lib/format'
+import { labourVerdict, plannedHours } from '../domain/labour'
+import { compact, dataRo, num, pct } from '../lib/format'
 import {
   Card,
   EmptyState,
@@ -30,9 +31,10 @@ import type { Selection } from '../lib/selection'
 import { GanttChart } from '../components/gantt/GanttChart'
 import { VariatiiView } from './Variatii'
 import { CosturiProiect } from './project/Costuri'
+import { ManoperaProiect } from './project/Manopera'
 import { StructuraProiect } from './project/Structura'
 
-type SubTab = 'prezentare' | 'costuri' | 'variatii' | 'program' | 'documente'
+type SubTab = 'prezentare' | 'manopera' | 'costuri' | 'variatii' | 'program' | 'documente'
 
 /** Verdictul proiectului — aceeași regulă ca pe cardul din listă. */
 function verdict(p: ProjectWithKpis): { label: string; tone: Tone } {
@@ -44,13 +46,31 @@ function verdict(p: ProjectWithKpis): { label: string; tone: Tone } {
   return { label: 'Conform planului', tone: 'pos' }
 }
 
+/** Verdictul orelor, în tonurile aplicației: peste plan = roșu, aproape = ambru. */
+function oreTone(v: ReturnType<typeof labourVerdict>): Tone {
+  if (v === 'peste_plan') return 'neg'
+  if (v === 'aproape') return 'warn'
+  if (v === 'sub_plan') return 'pos'
+  return 'neutral'
+}
+
 /** „PT2" din „Punct Termic 2 (PT2)" — eticheta scurtă pentru note. */
 function shortJobName(name: string): string {
   return name.match(/\(([^)]+)\)/)?.[1] ?? name
 }
 
 /** Cele cinci întrebări la care răspunde proiectul. */
-function CifreProiect({ p }: { p: ProjectWithKpis }) {
+function CifreProiect({ p, ore }: { p: ProjectWithKpis; ore: number }) {
+  // planul de ore: numărul proiectului, altfel suma joburilor (0023)
+  const orePlan = plannedHours({
+    declared: p.planned_hours === null ? null : Number(p.planned_hours),
+    children: p.jobs.map((j) =>
+      plannedHours({
+        declared: j.planned_hours === null ? null : Number(j.planned_hours),
+        children: j.tasks.map((t) => manDaysToHours(t.planned_man_days)),
+      })
+    ),
+  })
   const k = p.kpis
   const shouldCost = k.costVariance + k.actualCost
   const worst = [...p.jobs].sort((a, b) => b.kpis.behindDays - a.kpis.behindDays)[0]
@@ -58,7 +78,7 @@ function CifreProiect({ p }: { p: ProjectWithKpis }) {
   const lateLei = Math.round(k.scheduleVarianceLei)
 
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
       <StatCard
         label="Cât s-a construit?"
         value={pct(k.donePct)}
@@ -106,6 +126,17 @@ function CifreProiect({ p }: { p: ProjectWithKpis }) {
         tone={toneOf(cashColor(k.cashPct))}
         pills={[{ text: `${compact(k.billing.incasat)} din ${compact(k.billing.facturat)}` }]}
         footnote={k.wip > 0 ? `${compact(k.wip)} lei construiți și neprobați` : undefined}
+      />
+      <StatCard
+        label="Cât am muncit?"
+        value={`${num(ore)} ore`}
+        tone={orePlan > 0 ? oreTone(labourVerdict(orePlan, ore)) : 'neutral'}
+        pills={[{ text: orePlan > 0 ? `din ${num(orePlan)} planificate` : 'fără plan de ore' }]}
+        footnote={
+          orePlan > 0
+            ? `${pct(ore / orePlan)} din orele alocate · detaliul în fila Manoperă`
+            : 'orele vin din Pontaj · pune un plan în fila Manoperă'
+        }
       />
     </div>
   )
@@ -164,6 +195,7 @@ export function ProjectPageView({
           onChange={setTab}
           options={[
             { value: 'prezentare', label: 'Prezentare' },
+            { value: 'manopera', label: 'Manoperă' },
             { value: 'costuri', label: 'Costuri' },
             {
               value: 'variatii',
@@ -179,7 +211,7 @@ export function ProjectPageView({
           numerele lor și nu au nevoie să le repete */}
       {tab === 'prezentare' && (
         <div className="mb-5">
-          <CifreProiect p={p} />
+          <CifreProiect p={p} ore={hoursOf(hours, p.id).total} />
         </div>
       )}
 
@@ -192,11 +224,14 @@ export function ProjectPageView({
           onRefetch={onRefetch}
           patchEntity={patchEntity}
           onOpenCronologic={onOpenCronologic}
+          hours={hours}
         />
       )}
 
+      {tab === 'manopera' && <ManoperaProiect p={p} save={save} hours={hours} />}
+
       {tab === 'costuri' && (
-        <CosturiProiect p={p} save={save} hours={hours.byProject[p.id] ?? null} />
+        <CosturiProiect p={p} save={save} hours={hoursOf(hours, p.id).total || null} />
       )}
 
       {tab === 'variatii' && (
