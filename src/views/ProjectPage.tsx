@@ -224,6 +224,7 @@ export function ProjectPageView({
           onRefetch={onRefetch}
           patchEntity={patchEntity}
           onOpenCronologic={onOpenCronologic}
+          hours={hours}
         />
       )}
 

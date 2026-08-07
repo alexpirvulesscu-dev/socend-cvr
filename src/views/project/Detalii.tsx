@@ -46,7 +46,8 @@ import {
   type BillingInput,
 } from '../../domain/kpi'
 import { DASH, dataRo, lei, num, pct, toNum, zile } from '../../lib/format'
-import { TARIF_ORA, manDaysToHours } from '../../data/labour'
+import { TARIF_ORA, manDaysToHours, planOfJob, planOfProject } from '../../data/labour'
+import { labourVerdict } from '../../domain/labour'
 import {
   Card,
   DangerButton,
@@ -61,6 +62,7 @@ import {
   scheduleText,
   toneOf,
   toneText,
+  type Tone,
 } from '../../components/ui'
 import { InlineEdit } from '../../components/InlineEdit'
 import { toast } from '../../components/Toast'
@@ -79,6 +81,52 @@ const entityTitleCls = 'text-stat-sm font-bold leading-tight tracking-[-0.01em] 
  * mari rămân doar pentru capetele de coloană și banda KPI — când totul strigă,
  * nimic nu se mai aude.
  */
+/**
+ * Aceeași linie de ore la toate cele trei niveluri: cât s-a lucrat din cât s-a
+ * alocat. Bara e mută când nu există plan — orele lucrate se văd oricum, fiindcă
+ * repartiția pe proiect e la fel de validă ca cea pe task.
+ */
+export function OreLine({
+  spent,
+  plan,
+  className = '',
+}: {
+  spent: number
+  plan: number
+  className?: string
+}) {
+  const v = labourVerdict(plan, spent)
+  const tone: Tone =
+    v === 'peste_plan' ? 'neg' : v === 'aproape' ? 'warn' : v === 'sub_plan' ? 'pos' : 'neutral'
+  return (
+    <div className={`border-t border-line-2 pt-3 ${className}`}>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <span className="text-sub text-ink-3">Ore lucrate din alocate</span>
+        <span className="text-row tabular-nums">
+          <span className="font-bold text-ink-1">{num(spent)}</span>
+          <span className="text-ink-3"> din {plan > 0 ? num(plan) : '—'} ore</span>
+          {plan > 0 && (
+            <span className={`font-medium ${toneText(tone)}`}> · {pct(spent / plan)}</span>
+          )}
+        </span>
+      </div>
+      {plan > 0 && (
+        <ProgressBar
+          className="mt-2"
+          donePct={Math.min(spent / plan, 1)}
+          tone={tone}
+          title={`${num(spent)} din ${num(plan)} ore`}
+        />
+      )}
+      {plan === 0 && (
+        <p className="mt-1 text-sub text-ink-3">
+          Fără ore alocate — pune un număr în fila Manoperă ca să apară comparația.
+        </p>
+      )}
+    </div>
+  )
+}
+
 function FieldLabel({ children }: { children: React.ReactNode }) {
   return <span className="block text-sub text-ink-3">{children}</span>
 }
@@ -345,11 +393,14 @@ export function ProjectDetail({
   save,
   onRefetch,
   onSelect,
+  oreLucrate,
 }: {
   p: ProjectWithKpis
   save: Save
   onRefetch: () => void
   onSelect: (sel: Selection) => void
+  /** orele pontate pe proiect, la orice nivel de repartiție */
+  oreLucrate: number
 }) {
   // toate câmpurile de proiect persistă prin updateProject (care cere patch-ul
   // complet + sincronul P&L la redenumire) — construim patch-ul din rândul curent
@@ -478,6 +529,8 @@ export function ProjectDetail({
           </span>{' '}
           · valoarea = suma taskurilor
         </p>
+
+        <OreLine spent={oreLucrate} plan={planOfProject(p)} />
 
         {/* controalele rare — apar doar în modul „Editează" */}
         {editing && (
@@ -731,6 +784,7 @@ export function JobDetail({
   onRefetch,
   onSelect,
   onOpenCronologic,
+  oreLucrate,
 }: {
   p: ProjectWithKpis
   job: JobWithKpis
@@ -738,6 +792,8 @@ export function JobDetail({
   onRefetch: () => void
   onSelect: (sel: Selection) => void
   onOpenCronologic: (projectId: string, jobId: string) => void
+  /** orele pontate pe job (ale lui + ale taskurilor lui) */
+  oreLucrate: number
 }) {
   const [duplicating, setDuplicating] = useState(false)
   // updateJob persistă nume+date împreună (mutația existentă); bugetele au mutația lor
@@ -752,11 +808,8 @@ export function JobDetail({
   // graficul e verdictul acestui card: doar „în urmă" primește culoare
   const schedTone = toneOf(scheduleColor(k.behindDays))
   const targetInvoice = jobTargetInvoiceDate(job)
-  // manopera jobului: bugetul pe categoria „manopera" și orele care ies din el
+  // manopera jobului: bugetul pe categoria „manopera" (orele au planul lor, 0023)
   const bugetManopera = job.budgetByCategory.manopera ?? 0
-  const orePlan = bugetManopera / TARIF_ORA
-  // orele consumate pe job vin din Pontaj abia după repartiția pe job (vezi data/labour.ts)
-  const oreConsumate: number | null = null
 
   return (
     <div className="space-y-3">
@@ -828,18 +881,8 @@ export function JobDetail({
             <FieldValue className="tabular-nums">{lei(bugetManopera)}</FieldValue>
           </div>
           <div>
-            <FieldLabel>Ore</FieldLabel>
-            <FieldValue className="tabular-nums">
-              {oreConsumate === null ? (
-                <>
-                  {num(orePlan)} planificate <span className="text-ink-3">· consumate: vin din Pontaj</span>
-                </>
-              ) : (
-                <>
-                  {num(oreConsumate)} din {num(orePlan)}
-                </>
-              )}
-            </FieldValue>
+            <FieldLabel>Ore planificate</FieldLabel>
+            <FieldValue className="tabular-nums">{num(planOfJob(job))}</FieldValue>
           </div>
           {/* ținta de facturare a jobului (0020): taskurile fără dată proprie o moștenesc */}
           <div>
@@ -875,6 +918,8 @@ export function JobDetail({
             {pct(k.donePct)}
           </span>
         </div>
+
+        <OreLine spent={oreLucrate} plan={planOfJob(job)} />
 
         {/* alunecarea față de planul INIȚIAL — se vede doar când există */}
         {k.baselineSlipDays !== null && Math.abs(k.baselineSlipDays) >= 1 && (
@@ -954,6 +999,7 @@ export function TaskDetail({
   save,
   onRefetch,
   onSelect,
+  oreLucrate,
 }: {
   p: ProjectWithKpis
   job: JobWithKpis
@@ -961,6 +1007,8 @@ export function TaskDetail({
   save: Save
   onRefetch: () => void
   onSelect: (sel: Selection) => void
+  /** orele pontate direct pe task */
+  oreLucrate: number
 }) {
   const manDays = useTaskManDays(useMemo(() => [task.id], [task.id]))
   // ținta jobului: taskul o moștenește dacă n-are una proprie (0020)
@@ -1183,13 +1231,12 @@ export function TaskDetail({
             <FieldValue className="font-bold tabular-nums">{lei(manoperaLei)}</FieldValue>
           </div>
           <div>
-            <FieldLabel>Ore</FieldLabel>
-            <FieldValue className="tabular-nums">
-              {num(orePlanTask)} plan{' '}
-              <span className="text-ink-3">· consum din Pontaj</span>
-            </FieldValue>
+            <FieldLabel>Ore planificate</FieldLabel>
+            <FieldValue className="tabular-nums">{num(orePlanTask)}</FieldValue>
           </div>
         </div>
+
+        <OreLine spent={oreLucrate} plan={orePlanTask} />
 
         <div className="flex flex-wrap items-center gap-2 border-t border-line-2 pt-3">
           {task.status === 'neinceput' && (

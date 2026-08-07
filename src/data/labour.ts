@@ -12,6 +12,7 @@
 // PostgREST), deci totalurile erau o felie arbitrară din realitate.
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { plannedHours } from '../domain/labour'
 
 /** Orele consumate pe un proiect, defalcate după nivelul repartiției. */
 export interface ProjectHours {
@@ -151,4 +152,34 @@ export const TARIF_ORA = 75
 /** Oameni-zile → ore (o zi de om = 8 ore). Taskurile stochează oameni-zile. */
 export function manDaysToHours(manDays: number | null | undefined): number {
   return (Number(manDays) || 0) * 8
+}
+
+// ── Planul de ore, într-un singur loc ────────────────────────────────────
+// Regula (0023): numărul declarat pe nivel bate suma nivelului de dedesubt.
+
+/** Planul de ore al unui task: din oamenii-zile plănuiți. */
+export function planOfTask(task: { planned_man_days: number | null }): number {
+  return manDaysToHours(task.planned_man_days)
+}
+
+/** Planul unui job: numărul lui, altfel suma orelor taskurilor. */
+export function planOfJob(job: {
+  planned_hours: number | null
+  tasks: { planned_man_days: number | null }[]
+}): number {
+  return plannedHours({
+    declared: job.planned_hours === null ? null : Number(job.planned_hours),
+    children: job.tasks.map(planOfTask),
+  })
+}
+
+/** Planul unui proiect: numărul lui, altfel suma joburilor. */
+export function planOfProject(p: {
+  planned_hours: number | null
+  jobs: { planned_hours: number | null; tasks: { planned_man_days: number | null }[] }[]
+}): number {
+  return plannedHours({
+    declared: p.planned_hours === null ? null : Number(p.planned_hours),
+    children: p.jobs.map(planOfJob),
+  })
 }
