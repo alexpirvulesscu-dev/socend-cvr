@@ -108,28 +108,32 @@ export function ConfigurareView({
     return issues
   }, [tasks, delivs])
 
-  const stepValid = useMemo(() => {
-    switch (step) {
-      case 0:
-        return name.trim().length > 0
-      case 1:
-        return jobs.length > 0 && jobs.every((j) => j.name.trim() && j.startDate && j.endDate)
-      case 2:
-        return (
-          tasks.length > 0 &&
-          tasks.every((t) => t.name.trim() && toNumber(t.value) > 0) &&
-          jobs.every((j) => tasks.some((t) => t.jobKey === j.key))
-        )
-      case 3:
-        return (
-          tasks.every((t) => delivs.some((d) => d.taskKey === t.key)) &&
-          delivs.every((d) => d.name.trim() && toNumber(d.qtyTotal) > 0) &&
-          weightIssues.length === 0
-        )
-      default:
-        return false
-    }
-  }, [step, name, jobs, tasks, delivs, weightIssues])
+  // Obligatorii sunt DOAR numele proiectului și clientul. Joburile, taskurile
+  // și livrabilele sunt opționale: se pot adăuga și mai târziu, din pagina
+  // proiectului (tabul Structură). La crearea proiectului de multe ori nu se
+  // știu încă toate detaliile.
+  const basicsValid = name.trim().length > 0 && client.trim().length > 0
+
+  // Ce s-a ADĂUGAT dar e incomplet, deci nu se poate salva. Un rând gol
+  // nu e obligatoriu, dar dacă există trebuie să aibă minimul cerut de baza
+  // de date (ex. un job are mereu nume + început + sfârșit).
+  const saveIssues = useMemo(() => {
+    const issues: string[] = []
+    if (!name.trim()) issues.push('Completează numele proiectului.')
+    if (!client.trim()) issues.push('Completează clientul / beneficiarul.')
+    if (jobs.some((j) => !j.name.trim() || !j.startDate || !j.endDate))
+      issues.push('Un job adăugat nu are nume sau date. Completează-l sau elimină-l.')
+    if (jobs.some((j) => j.startDate && j.endDate && j.endDate < j.startDate))
+      issues.push('Un job se termină înainte să înceapă.')
+    if (tasks.some((t) => !t.name.trim()))
+      issues.push('Un task adăugat nu are nume. Completează-l sau elimină-l.')
+    if (delivs.some((d) => !d.name.trim()))
+      issues.push('Un livrabil adăugat nu are nume. Completează-l sau elimină-l.')
+    if (weightIssues.length > 0) issues.push('Ponderile dintr-un task trebuie să însumeze 100%.')
+    return issues
+  }, [name, client, jobs, tasks, delivs, weightIssues])
+
+  const canSave = saveIssues.length === 0
 
   async function save() {
     setBusy(true)
@@ -207,12 +211,15 @@ export function ConfigurareView({
           {/* ── Pasul 1: Informații proiect ── */}
           {step === 0 && (
             <Card className="space-y-4">
+              <p className="text-row text-ink-3">
+                Doar numele și clientul sunt obligatorii. Restul se poate completa și mai târziu, din pagina proiectului.
+              </p>
               <div>
-                <label className={labelCls}>Nume proiect</label>
+                <label className={labelCls}>Nume proiect *</label>
                 <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} placeholder="ex. Termoficare Sector 4" />
               </div>
               <div>
-                <label className={labelCls}>Client / beneficiar</label>
+                <label className={labelCls}>Client / beneficiar *</label>
                 <input className={inputCls} value={client} onChange={(e) => setClient(e.target.value)} placeholder="ex. CMTEB" />
               </div>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -251,6 +258,11 @@ export function ConfigurareView({
           {/* ── Pasul 2: Joburi + bugete pe 5 categorii ── */}
           {step === 1 && (
             <>
+              {jobs.length === 0 && (
+                <p className="text-row text-ink-3">
+                  Opțional. Poți sări peste acest pas și adăuga joburile mai târziu.
+                </p>
+              )}
               {jobs.map((j, ji) => (
                 <Card key={j.key} className="space-y-3">
                   <div className="flex items-center justify-between">
@@ -340,6 +352,11 @@ export function ConfigurareView({
           {/* ── Pasul 3: Taskuri pe joburi ── */}
           {step === 2 && (
             <>
+              {jobs.length === 0 && (
+                <p className="text-row text-ink-3">
+                  Nu ai adăugat niciun job, deci nu ai unde pune taskuri. Poți salva proiectul așa.
+                </p>
+              )}
               {jobs.map((j) => (
                 <Card key={j.key} className="space-y-3">
                   <h3 className="text-card font-semibold text-ink-1">{j.name || 'Job fără nume'}</h3>
@@ -394,6 +411,11 @@ export function ConfigurareView({
           {/* ── Pasul 4: Livrabile cu UM / cantitate / pondere ── */}
           {step === 3 && (
             <>
+              {tasks.length === 0 && (
+                <p className="text-row text-ink-3">
+                  Nu ai adăugat niciun task, deci nu ai unde pune livrabile. Poți salva proiectul așa.
+                </p>
+              )}
               {tasks.map((t) => {
                 const rows = delivs.filter((d) => d.taskKey === t.key)
                 const wsum = rows.reduce((s, d) => s + toNumber(d.weight), 0)
@@ -506,20 +528,28 @@ export function ConfigurareView({
 
           {error && <ErrorStrip message={`Eroare la salvare: ${error}`} />}
 
-          {/* navigare între pași */}
-          <div className="flex items-center justify-between">
+          {/* ce lipsește ca să se poată salva (doar după ce s-a început completarea,
+              ca să nu apară roșu pe un formular gol) */}
+          {!canSave && (step > 0 || name.trim() || client.trim()) && (
+            <p className="text-row font-medium text-neg-pill">{saveIssues[0]}</p>
+          )}
+
+          {/* navigare între pași: „Salvează proiectul" e disponibil pe orice pas,
+              „Continuă" doar te duce mai departe, fără să ceară restul câmpurilor */}
+          <div className="flex items-center justify-between gap-2">
             <GhostButton onClick={() => (step === 0 ? onCancel() : setStep((s) => s - 1))}>
               {step === 0 ? 'Renunță' : '← Înapoi'}
             </GhostButton>
-            {step < 3 ? (
-              <PrimaryButton disabled={!stepValid} onClick={() => setStep((s) => s + 1)}>
-                Continuă →
-              </PrimaryButton>
-            ) : (
-              <PrimaryButton disabled={!stepValid || busy} onClick={() => void save()}>
+            <div className="flex items-center gap-2">
+              {step < 3 && (
+                <GhostButton disabled={!basicsValid} onClick={() => setStep((s) => s + 1)}>
+                  Continuă →
+                </GhostButton>
+              )}
+              <PrimaryButton disabled={!canSave || busy} onClick={() => void save()}>
                 {busy ? 'Se salvează…' : 'Salvează proiectul'}
               </PrimaryButton>
-            )}
+            </div>
           </div>
         </div>
 
