@@ -4,6 +4,7 @@
 import { supabase } from '../lib/supabase'
 import type { TaskStatus } from '../domain/kpi'
 import type { CostCategory, CostRow } from './projects'
+import { parseUsage, type ProjectUsage } from '../domain/projectUsage'
 
 /**
  * Adaugă un cost real pe un job (formularul „Adaugă cost").
@@ -42,9 +43,21 @@ export async function deleteCostEntry(id: string): Promise<void> {
   if (error) throw error
 }
 
-// ── Editarea proiectului + sincronizarea cu P&L (tabelul `proiecte`) ─────
-// Regula: numele și flag-ul activ se oglindesc pe rândul P&L legat prin
-// pnl_proiect_id. Proiectele fără legătură (ex. cele demo) nu ating P&L-ul.
+// ── Editarea proiectului ─────────────────────────────────────────────────
+// Legătura cu P&L-ul (lista `proiecte`) o ține DOAR baza de date (brief 34 + 59):
+//  - proiect nou: regula `cvr_sync_pnl_proiect` leagă un proiect P&L cu același
+//    nume sau creează unul;
+//  - redenumire: aceeași regulă redenumește proiectul P&L și toate plățile /
+//    încasările lui, iar o altă regulă (`_split_rename_project`) și părțile din
+//    plățile împărțite pe proiecte;
+//  - închidere / redeschidere: aceeași regulă închide / redeschide proiectul P&L;
+//  - ștergere: `cvr_close_pnl_proiect` șterge proiectul P&L dacă nu-l folosește
+//    nimic, altfel doar îl închide.
+// Înainte de brief 59 aplicația făcea toate acestea A DOUA OARĂ (funcția
+// `syncPnl`, plus o inserare în `proiecte` la proiect nou). Rezultatul: fiecare
+// proiect nou apărea de DOUĂ ori în P&L (dovedit 12 nov 2026, Petrachioaia), iar
+// un utilizator CVR care nu e și utilizator P&L primea o eroare. Acum aplicația
+// nu mai scrie nimic în tabelele P&L.
 
 export interface ProjectPatch {
   name: string
@@ -55,40 +68,7 @@ export interface ProjectPatch {
   isSmall: boolean
 }
 
-async function syncPnl(pnlId: string | null, patch: { nume?: string; activ?: boolean }) {
-  if (!pnlId) return
-  // La redenumire, aplicația P&L cascadează numele și în plati/incasari
-  // (referință prin TEXT, nu prin id) — replicăm exact același comportament.
-  if (patch.nume !== undefined) {
-    const { data: old, error: readErr } = await supabase
-      .from('proiecte')
-      .select('nume')
-      .eq('id', pnlId)
-      .single()
-    if (readErr) throw readErr
-    const oldName = old.nume as string
-    if (oldName !== patch.nume) {
-      const { error: e1 } = await supabase
-        .from('incasari')
-        .update({ proiect: patch.nume })
-        .eq('proiect', oldName)
-      if (e1) throw e1
-      const { error: e2 } = await supabase
-        .from('plati')
-        .update({ proiect: patch.nume })
-        .eq('proiect', oldName)
-      if (e2) throw e2
-    }
-  }
-  const { error } = await supabase.from('proiecte').update(patch).eq('id', pnlId)
-  if (error) throw error
-}
-
-export async function updateProject(
-  id: string,
-  pnlId: string | null,
-  p: ProjectPatch
-): Promise<void> {
+export async function updateProject(id: string, p: ProjectPatch): Promise<void> {
   const { error } = await supabase
     .from('projects')
     .update({
@@ -101,7 +81,7 @@ export async function updateProject(
     })
     .eq('id', id)
   if (error) throw error
-  await syncPnl(pnlId, { nume: p.name })
+  // redenumirea ajunge în P&L prin regula din baza de date (vezi mai sus)
 }
 
 /**
@@ -145,24 +125,37 @@ export async function updateJobBudget(
   if (error) throw error
 }
 
-/** Finalizează / reactivează proiectul (bucket-ul „Finalizate") + sincron P&L. */
-export async function setProjectActive(
-  id: string,
-  pnlId: string | null,
-  active: boolean
-): Promise<void> {
+/**
+ * Finalizează (închide) / reactivează proiectul (bucket-ul „Finalizate").
+ * P&L-ul și HR-ul urmează singure: P&L-ul prin regula din baza de date, HR-ul
+ * pentru că folosește același tabel `projects`.
+ */
+export async function setProjectActive(id: string, active: boolean): Promise<void> {
   const { error } = await supabase.from('projects').update({ active }).eq('id', id)
   if (error) throw error
-  await syncPnl(pnlId, { activ: active })
+}
+
+/**
+ * Ce are proiectul în P&L și în HR (doar numere), ÎNAINTE de ștergere.
+ * Dacă are ceva, ecranul propune „Închide proiectul" în loc de ștergere.
+ * Funcția bazei de date merge pentru orice utilizator de birou al CVR-ului,
+ * chiar dacă nu are acces la P&L (nu întoarce sume sau nume).
+ */
+export async function fetchProjectUsage(id: string): Promise<ProjectUsage> {
+  const { data, error } = await supabase.rpc('cvr_project_usage', { p_project_id: id })
+  if (error) throw error
+  return parseUsage(data)
 }
 
 /**
  * Șterge complet proiectul din CVR (cascade: joburi, taskuri, livrabile,
- * costuri, facturare, raportări). Rândul P&L legat NU se șterge — doar se
- * dezactivează, ca istoricul de plăți/încasări din P&L să rămână valid.
+ * costuri, facturare, raportări). Se cheamă DOAR după `fetchProjectUsage` a
+ * arătat că proiectul nu are nimic în P&L sau HR. Proiectul dispare și din HR
+ * (același tabel) și din P&L (regula `cvr_close_pnl_proiect` îl șterge; dacă
+ * între timp a apărut ceva pe numele lui, doar îl închide). Dacă HR-ul a pus
+ * între timp o zi pe proiect, baza de date refuză ștergerea.
  */
-export async function deleteProject(id: string, pnlId: string | null): Promise<void> {
-  await syncPnl(pnlId, { activ: false })
+export async function deleteProject(id: string): Promise<void> {
   const { error } = await supabase.from('projects').delete().eq('id', id)
   if (error) throw error
 }
@@ -606,21 +599,11 @@ export async function createProject(p: NewProject): Promise<string> {
     // facturarea stă pe joburi (0017) și se creează la prima editare (upsert),
     // deci nu mai e nimic de inițializat aici
 
-    // sincron P&L: proiectul nou apare și în lista de proiecte a aplicației P&L
-    // (același id în ambele tabele), apoi se leagă prin pnl_proiect_id
-    const { error: pnlErr } = await supabase
-      .from('proiecte')
-      .insert({ id: projectId, nume: p.name, activ: true })
-    if (pnlErr) throw pnlErr
-    const { error: linkErr } = await supabase
-      .from('projects')
-      .update({ pnl_proiect_id: projectId })
-      .eq('id', projectId)
-    if (linkErr) throw linkErr
+    // P&L: NIMIC de făcut aici. Regula din baza de date a creat (sau a legat)
+    // deja proiectul P&L în momentul inserării în `projects` (brief 59).
   } catch (err) {
-    // curățenie: cascade șterge tot ce s-a apucat să creeze
-    // (inclusiv eventualul rând-oglindă din proiecte, creat cu același id)
-    await supabase.from('proiecte').delete().eq('id', projectId)
+    // curățenie: cascade șterge tot ce s-a apucat să creeze; regula
+    // `cvr_close_pnl_proiect` șterge și proiectul P&L abia creat (nu are rânduri)
     const { error: cleanupErr } = await supabase.from('projects').delete().eq('id', projectId)
     if (cleanupErr) {
       // dacă nici curățenia nu merge, spunem explicit că a rămas un proiect pe jumătate
