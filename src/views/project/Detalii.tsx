@@ -22,6 +22,7 @@ import {
   deleteJob,
   deleteProject,
   deleteTask,
+  fetchProjectUsage,
   duplicateJob,
   duplicateTask,
   setProjectActive,
@@ -48,11 +49,13 @@ import {
 import { DASH, dataRo, lei, num, pct, toNum, zile } from '../../lib/format'
 import { TARIF_ORA, manDaysToHours, planOfJob, planOfProject } from '../../data/labour'
 import { labourVerdict } from '../../domain/labour'
+import { hasUsage, usageLines, type ProjectUsage } from '../../domain/projectUsage'
 import {
   Card,
   DangerButton,
   EmptyState,
   GhostButton,
+  Modal,
   NeutralPill,
   PrimaryButton,
   ProgressBar,
@@ -320,14 +323,18 @@ export function Note({ withDeleteInfo }: { withDeleteInfo?: boolean } = {}) {
     ['Marjă la zi', '(lucrări executate − costuri reale din P&L) ÷ lucrări executate'],
     ['Încasări', 'încasat ÷ facturat; WIP = lucrări executate care nu au fost încă facturate'],
   ]
-  // regulile de repartizare a costurilor din P&L (cerute de Alex, ca să le țină minte)
+  // regulile de repartizare a costurilor din P&L (cerute de Alex, ca să le țină minte).
+  // Brief 59: grupa fiecărei categorii NU mai e scrisă aici, ci în P&L (Admin →
+  // Categorii, „Grup CVR"); o categorie nouă se grupează o dată, în P&L.
   const costRules: [string, string][] = [
+    ['De unde', 'din plățile din P&L (fără cele planificate). Fiecare categorie din P&L are un „Grup CVR" (Admin → Categorii în P&L): materiale, subcontractori, combustibil și transport, echipamente, regie, salarii sau „nu e cost de șantier". O plată împărțită pe mai multe proiecte în P&L ajunge pe fiecare proiect cu partea lui.'],
     ['1. Manoperă (salarii și contribuții)', 'după oameni-zile: orele de pontaj ale proiectului ÷ total ore × totalul salariilor din P&L. Ex: 100 din 1000 oameni-zile pe un proiect = 10% din salarii.'],
-    ['2. Materiale și consumabile', 'direct din P&L pe proiect + cota-parte (după valoarea contractului) din materialele company-wide.'],
-    ['3. Subcontractori', 'direct din P&L pe proiect + cotă company-wide.'],
-    ['4. Combustibil și transport', 'direct din P&L pe proiect + cotă company-wide.'],
-    ['5. Echipamente și utilaje', 'însumează 3 categorii P&L (Echipamente + Scule și unelte + Utilaje); direct pe proiect + cotă company-wide.'],
-    ['6. Overheads', 'alte cheltuieli, asigurări, birou, instructaje, marketing, PPE, servicii bancare, servicii profesionale, taxe — 100% repartizate după valoarea contractului (contract mai mare = pondere mai mare).'],
+    ['2. Materiale și consumabile', 'direct din P&L pe proiect + cota-parte (după valoarea contractului) din materialele pe toată firma („Toate" sau fără proiect).'],
+    ['3. Subcontractori', 'direct din P&L pe proiect + cotă din cele pe toată firma.'],
+    ['4. Combustibil și transport', 'direct din P&L pe proiect + cotă din cele pe toată firma (reparațiile auto intră aici).'],
+    ['5. Echipamente și utilaje', 'categoriile P&L din grupul „echipamente" (ex. scule, unelte, utilaje, închirieri de utilaje); direct pe proiect + cotă din cele pe toată firma.'],
+    ['6. Overheads', 'categoriile P&L din grupul „regie" (ex. chirii, utilități, birou, asigurări, servicii, taxe, PPE): cele puse pe proiect rămân pe proiect, cele pe toată firma se repartizează 100% după valoarea contractului (contract mai mare = pondere mai mare).'],
+    ['Nu intră', 'categoriile marcate „nu e cost de șantier" în P&L (ex. rate de împrumut, TVA de plată, investiții).'],
   ]
   return (
     <Card className="!p-0">
@@ -352,9 +359,11 @@ export function Note({ withDeleteInfo }: { withDeleteInfo?: boolean } = {}) {
             <div>
               <p className="mb-1 text-row font-semibold text-ink-1">Ce se întâmplă la ștergere</p>
               <p className="text-row leading-relaxed text-ink-2">
-                Ștergerea elimină definitiv proiectul din CVR (joburi, taskuri, raportări,
-                costuri). În P&amp;L, proiectul legat doar se dezactivează — istoricul de plăți
-                rămâne.
+                CVR, P&amp;L și HR folosesc același proiect. Înainte de ștergere, aplicația verifică
+                ce are proiectul: plăți sau încasări în P&amp;L (inclusiv părți din plăți împărțite
+                pe proiecte) și zile sau alocări în HR. Dacă are ceva, nu se șterge: îți propune
+                „Închide proiectul", iar istoricul rămâne. Un proiect fără nimic se șterge definitiv
+                din CVR (joburi, taskuri, raportări, costuri), din HR și din P&amp;L.
               </p>
             </div>
           )}
@@ -403,9 +412,10 @@ export function ProjectDetail({
   oreLucrate: number
 }) {
   // toate câmpurile de proiect persistă prin updateProject (care cere patch-ul
-  // complet + sincronul P&L la redenumire) — construim patch-ul din rândul curent
+  // complet; redenumirea ajunge în P&L prin regula din baza de date), deci
+  // construim patch-ul din rândul curent
   function persistProject(over: Partial<{ name: string; client: string; billingMode: 'stadii_fizice' | 'lunara'; startDate: string; endDate: string; isSmall: boolean }>) {
-    return updateProject(p.id, p.pnl_proiect_id, {
+    return updateProject(p.id, {
       name: p.name,
       client: p.client ?? '',
       billingMode: p.billing_mode === 'lunara' ? 'lunara' : 'stadii_fizice',
@@ -419,6 +429,39 @@ export function ProjectDetail({
   // controalele rar folosite (proiect mic / finalizare / ștergere) apar doar
   // când apeși „Editează" — altfel nu le cărăm după noi tot timpul
   const [editing, setEditing] = useState(false)
+  // ștergerea (brief 59): întâi întrebăm baza de date ce are proiectul în P&L și
+  // în HR; dacă are ceva, fereastra propune „Închide proiectul" în loc de ștergere
+  const [checkingDelete, setCheckingDelete] = useState(false)
+  const [usage, setUsage] = useState<ProjectUsage | null>(null)
+
+  /** Închide proiectul (același lucru ca „Marchează finalizat"); P&L și HR urmează singure. */
+  function closeProject() {
+    setUsage(null)
+    save(
+      { kind: 'project', id: p.id, patch: { active: false } },
+      { kind: 'project', id: p.id, patch: { active: p.active } },
+      () => setProjectActive(p.id, false)
+    )
+  }
+
+  /** „Șterge proiectul" confirmat: verifică întâi, șterge doar un proiect fără nimic. */
+  async function askDelete() {
+    setCheckingDelete(true)
+    try {
+      const u = await fetchProjectUsage(p.id)
+      if (hasUsage(u)) {
+        setUsage(u) // deschide fereastra; nimic nu se șterge
+        return
+      }
+      await deleteProject(p.id)
+      onSelect({})
+      onRefetch()
+    } catch (e) {
+      toast(`Nu s-a șters: ${(e as Error).message}`)
+    } finally {
+      setCheckingDelete(false)
+    }
+  }
 
   return (
     <div className="space-y-3">
@@ -580,28 +623,52 @@ export function ProjectDetail({
                   save(
                     { kind: 'project', id: p.id, patch: { active: !p.active } },
                     { kind: 'project', id: p.id, patch: { active: p.active } },
-                    () => setProjectActive(p.id, p.pnl_proiect_id, !p.active)
+                    () => setProjectActive(p.id, !p.active)
                   )
                   setBusy(false)
                 }}
               >
                 {p.active ? 'Marchează finalizat' : 'Reactivează proiectul'}
               </GhostButton>
-              <DangerButton
-                label="Șterge proiectul"
-                onConfirmed={() => {
-                  deleteProject(p.id, p.pnl_proiect_id)
-                    .then(() => {
-                      onSelect({})
-                      onRefetch()
-                    })
-                    .catch((e: Error) => toast(`Nu s-a șters: ${e.message}`))
-                }}
-              />
+              {checkingDelete ? (
+                <span className="px-3 py-2 text-row text-ink-3">Verific ce are proiectul…</span>
+              ) : (
+                <DangerButton label="Șterge proiectul" onConfirmed={() => void askDelete()} />
+              )}
             </div>
           </div>
         )}
       </Card>
+
+      {usage && (
+        <Modal title="Proiectul nu se poate șterge" onClose={() => setUsage(null)}>
+          <div className="space-y-3 text-row text-ink-2">
+            <p>
+              <span className="font-semibold text-ink-1">{p.name}</span> are deja date în
+              celelalte aplicații. Ștergerea l-ar scoate și din P&amp;L și din HR, deci nu se face.
+            </p>
+            {usageLines(usage).map((g) => (
+              <div key={g.where}>
+                <p className="font-semibold text-ink-1">{g.where === 'HR' ? 'În HR (pontaj)' : 'În P&L'}</p>
+                <ul className="ml-5 list-disc">
+                  {g.items.map((it) => (
+                    <li key={it}>{it}</li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+            <p>
+              {p.active
+                ? 'Închide proiectul în loc să-l ștergi: dispare din listele de lucru (CVR, P&L, HR), iar istoricul rămâne.'
+                : 'Proiectul e deja închis: dispare din listele de lucru, iar istoricul rămâne. Nu e nevoie de nimic altceva.'}
+            </p>
+          </div>
+          <div className="mt-5 flex flex-wrap justify-end gap-2">
+            <GhostButton onClick={() => setUsage(null)}>Renunță</GhostButton>
+            {p.active && <PrimaryButton onClick={closeProject}>Închide proiectul</PrimaryButton>}
+          </div>
+        </Modal>
+      )}
 
       <FluxFacturareProiect p={p} />
       <CosturiPnl p={p} />
