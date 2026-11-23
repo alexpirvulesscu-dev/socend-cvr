@@ -1,36 +1,37 @@
 // Fila „Tracker" a unui proiect: execuția pe traseu (primul: Peștișani VJ36-VJ80).
-//  · Cum stăm azi: cât e gata, pe etape, harta traseului și lucrările separate.
-//  · Jurnal zilnic: ce s-a construit în fiecare zi, de la ce reper la ce reper.
-// Harta se calculează din jurnal; apeși pe o porțiune și vezi în ce zi s-a făcut fiecare metru.
+//  · Cum stăm azi: puncte de control. „Cu săpătura am ajuns la VJ47" bifează
+//    porțiunile până acolo; ziua bifei rămâne discret pe fiecare porțiune.
+//    Se numără doar ce e terminat.
+//  · Jurnal zilnic: o singură foaie, un rând pe zi, cantitățile din Excel.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  allocate,
-  dayTouches,
-  segmentHistory,
+  boundaries,
+  checkpointPlan,
+  defaultFrom,
+  isDone,
+  markMap,
   segmentLabel,
   segmentState,
-  stageState,
   stagesFor,
   summarize,
-  workGrid,
+  workProgress,
   STARE_LABEL,
-  type Allocation,
+  type Marks,
   type Segment,
   type Stare,
   type TrackerConfig,
 } from '../../domain/tracker'
 import {
-  addEntries,
   azi,
+  saveCheckpoint,
+  setMark,
   updatePoint,
   useTracker,
-  type EntryRow,
   type PointRow,
   type TrackerData,
 } from '../../data/tracker'
 import { color } from '../../design/tokens'
-import { Jurnal, PePortiuni, PeZile, qtyText } from './TrackerTabele'
-import { dataRo, num, toNum } from '../../lib/format'
+import { dataRo, num } from '../../lib/format'
 import {
   Card,
   ErrorStrip,
@@ -43,11 +44,13 @@ import {
   type Tone,
 } from '../../components/ui'
 import { toast } from '../../components/Toast'
+import { JurnalZilnic } from './TrackerJurnal'
 
 const STARE_FILL: Record<Stare, string> = { done: color.posFill, ip: color.warnFill, ns: color.line3 }
 const STARE_TONE: Record<Stare, Tone> = { done: 'pos', ip: 'warn', ns: 'neutral' }
 
 const m1 = (n: number) => `${num(n, 1)} m`
+const zz = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}`
 
 const inputCls =
   'h-10 w-full rounded-btn border border-line-2 bg-paper-0 px-3 text-row text-ink-1 hover:border-line-3 focus:border-accent'
@@ -85,16 +88,17 @@ function rowsFor(segments: Segment[], width: number): Segment[][] {
 
 function Traseu({
   data,
-  alloc,
+  mm,
   view,
-  day,
+  front,
   onSegment,
   onPoint,
 }: {
   data: TrackerData
-  alloc: Allocation
+  mm: Marks
   view: string
-  day: string
+  /** frontul lucrării afișate (doar când e aleasă o lucrare) */
+  front: string | null
   onSegment: (s: Segment & { id: string }) => void
   onPoint: (p: PointRow) => void
 }) {
@@ -109,7 +113,6 @@ function Traseu({
     return () => ro.disconnect()
   }, [])
 
-  const touched = day ? dayTouches(data.entries, alloc, day) : null
   const pins = new Map(data.points.filter((p) => p.at_pt).map((p) => [p.at_pt!, p]))
   const typeColor = (k: string) => cfg.types.find((t) => t.id === k)?.color ?? color.ink4
   const rows = rowsFor(data.segments, W)
@@ -126,8 +129,8 @@ function Traseu({
         w = w.map((v) => v * k)
         const lastPt = segs[segs.length - 1].to_pt
         const rowPts = [...new Set(segs.map((s) => s.from_pt)), lastPt]
-        const hasPin = rowPts.some((p) => pins.has(p))
-        const Y = hasPin ? 92 : 50
+        const hasTop = rowPts.some((p) => pins.has(p) || p === front)
+        const Y = hasTop ? 92 : 50
         const H = Y + 58
         let x = X0
         const pos = segs.map((s, i) => {
@@ -150,15 +153,9 @@ function Traseu({
                 const list = stagesFor(cfg, s.kind)
                 const applies = view === 'all' || list.includes(view)
                 const st: Stare =
-                  view === 'all'
-                    ? segmentState(cfg, s, alloc)
-                    : applies
-                      ? stageState(s, alloc.filled.get(s.code)?.get(view) ?? 0)
-                      : 'ns'
+                  view === 'all' ? segmentState(cfg, s, mm) : applies && isDone(mm, s.code, view) ? 'done' : 'ns'
                 const fill = st === 'done' ? color.posFill : st === 'ip' ? 'url(#hatch-ip)' : color.paper0
                 const stroke = st === 'ns' ? color.line3 : st === 'ip' ? color.warnFill : color.posFill
-                const isDay = touched?.has(s.code) ?? false
-                const dim = !applies || (touched !== null && !isDay)
                 const cx = sx + sw / 2
                 const gap = 9
                 const dw = list.length * gap
@@ -168,8 +165,8 @@ function Traseu({
                     className="cursor-pointer outline-none [&:hover>.hit]:fill-paper-1 [&:focus-visible>.hit]:fill-paper-1"
                     tabIndex={0}
                     role="button"
-                    opacity={dim ? 0.28 : 1}
-                    aria-label={`${segmentLabel(s)}, ${m1(Number(s.length_m))}, ${STARE_LABEL[segmentState(cfg, s, alloc)]}`}
+                    opacity={applies ? 1 : 0.28}
+                    aria-label={`${segmentLabel(s)}, ${m1(Number(s.length_m))}, ${STARE_LABEL[segmentState(cfg, s, mm)]}`}
                     onClick={() => onSegment(s as Segment & { id: string })}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' || e.key === ' ') {
@@ -179,9 +176,6 @@ function Traseu({
                     }}
                   >
                     <rect className="hit" x={sx + 1} y={Y - 30} width={sw - 2} height={70} rx={10} fill="transparent" />
-                    {isDay && (
-                      <rect x={sx + 1} y={Y - 13} width={sw - 2} height={26} rx={13} fill="none" stroke={color.info} strokeWidth={2} />
-                    )}
                     <rect x={sx + 3} y={Y - 8} width={sw - 6} height={16} rx={8} fill={fill} stroke={stroke} strokeWidth={2} />
                     <rect x={sx + 6} y={Y + 11} width={Math.max(sw - 12, 2)} height={3} rx={1.5} fill={typeColor(s.kind)} />
                     {st === 'done' && sw > 26 && (
@@ -192,21 +186,21 @@ function Traseu({
                         {num(Number(s.length_m), 1)}
                       </text>
                     )}
-                    {sw > dw + 8 &&
+                    {view === 'all' &&
+                      sw > dw + 8 &&
                       list.map((k2, i) => {
-                        const v = stageState(s, alloc.filled.get(s.code)?.get(k2) ?? 0)
-                        const c = v === 'done' ? color.posFill : v === 'ip' ? color.warnFill : color.track
+                        const v = isDone(mm, s.code, k2)
                         return (
                           <circle
                             key={k2}
                             cx={cx - dw / 2 + gap / 2 + i * gap}
                             cy={Y + 24}
                             r={3.3}
-                            fill={c}
-                            stroke={v === 'ns' ? color.ink4 : c}
-                            strokeWidth={k2 === view ? 2 : 1}
+                            fill={v ? color.posFill : color.track}
+                            stroke={v ? color.posFill : color.ink4}
+                            strokeWidth={1}
                           >
-                            <title>{`${stageLabel(cfg, k2)}: ${STARE_LABEL[v]}`}</title>
+                            <title>{`${stageLabel(cfg, k2)}: ${v ? 'gata' : 'nu e gata'}`}</title>
                           </circle>
                         )
                       })}
@@ -220,13 +214,23 @@ function Traseu({
                 ))}
               {ticks.map(([pt, tx]) => {
                 const pin = pins.get(pt)
+                const isFront = pt === front
                 return (
                   <g key={`t-${pt}`}>
-                    <line x1={tx} y1={Y - 13} x2={tx} y2={Y + 13} stroke={color.ink1} strokeWidth={2.5} strokeLinecap="round" />
-                    <text x={tx} y={Y + 50} textAnchor="middle" fontSize={14} fontWeight={700} fill={color.ink1}>
+                    <line x1={tx} y1={Y - 13} x2={tx} y2={Y + 13} stroke={isFront ? color.info : color.ink1} strokeWidth={isFront ? 3.5 : 2.5} strokeLinecap="round" />
+                    <text x={tx} y={Y + 50} textAnchor="middle" fontSize={14} fontWeight={700} fill={isFront ? color.info : color.ink1}>
                       {pt}
                     </text>
-                    {pin && (
+                    {isFront && (
+                      <g>
+                        <line x1={tx} y1={36} x2={tx} y2={Y - 14} stroke={color.info} strokeWidth={2} />
+                        <rect x={Math.min(Math.max(tx - 44, 2), W - 90)} y={10} width={88} height={26} rx={13} fill={color.info} />
+                        <text x={Math.min(Math.max(tx, 46), W - 46)} y={27} textAnchor="middle" fontSize={12} fontWeight={700} fill="#fff">
+                          am ajuns aici
+                        </text>
+                      </g>
+                    )}
+                    {pin && !isFront && (
                       <g
                         className="cursor-pointer"
                         role="button"
@@ -271,52 +275,147 @@ function Traseu({
   )
 }
 
-// ── Panourile (porțiune, lucrare separată) ───────────────────────────────
+// ── „Am ajuns la…" ──────────────────────────────────────────────────────
 
-function SegmentPanel({
+function CheckpointModal({
   data,
-  alloc,
-  seg,
+  mm,
+  stage: initialStage,
   onClose,
-  onAdded,
+  onSaved,
 }: {
   data: TrackerData
-  alloc: Allocation
-  seg: Segment & { id: string }
+  mm: Marks
+  stage: string
   onClose: () => void
-  onAdded: (rows: EntryRow[]) => void
+  onSaved: (d: TrackerData) => void
 }) {
   const cfg = data.tracker.config
-  const list = stagesFor(cfg, seg.kind)
-  const filled = alloc.filled.get(seg.code)
-  const hist = segmentHistory(data.entries, alloc, seg.code)
-  const type = cfg.types.find((t) => t.id === seg.kind)
+  const pts = boundaries(data.segments)
+  const [stage, setStage] = useState(initialStage)
+  const [from, setFrom] = useState(() => defaultFrom(data.segments, data.checkpoints, initialStage))
+  const [at, setAt] = useState('')
   const [date, setDate] = useState(azi())
-  const [stage, setStage] = useState(list.find((k) => (filled?.get(k) ?? 0) < Number(seg.length_m) - 0.05) ?? list[0])
-  const left = Math.max(0, Number(seg.length_m) - (filled?.get(stage) ?? 0))
-  const [qty, setQty] = useState('')
   const [busy, setBusy] = useState(false)
 
-  // partea a doua a unei porțiuni împărțite se umple dinspre capătul ei
-  const [fromPt, toPt] = seg.part > 0 ? [seg.to_pt, seg.from_pt] : [seg.from_pt, seg.to_pt]
+  const plan = at && from && at !== from ? checkpointPlan(cfg, data.segments, mm, stage, from, at) : []
+  const meters = plan.reduce((s, x) => s + Number(x.length_m), 0)
 
-  async function add(q: number) {
-    if (!(q > 0)) {
-      toast('Scrie câți metri s-au făcut.')
-      return
-    }
+  async function save() {
+    if (!at || at === from) return toast('Alege VJ-ul la care ați ajuns.')
     setBusy(true)
     try {
-      const rows = await addEntries(data.tracker.id, [
-        { work_date: date, stage, from_pt: fromPt, to_pt: toPt, qty: q, note: null },
-      ])
-      onAdded(rows)
-      setQty('')
-      toast(`Adăugat în jurnal: ${stageLabel(cfg, stage)} ${m1(q)}`, 'success')
+      const r = await saveCheckpoint(
+        data.tracker.id,
+        { stage, from_pt: from, at_pt: at, done_on: date },
+        plan.map((s) => s.code)
+      )
+      onSaved({ ...data, marks: [...data.marks, ...r.marks], checkpoints: [...data.checkpoints, r.checkpoint] })
+      toast(`${stageLabel(cfg, stage)}: am ajuns la ${at}`, 'success')
+      onClose()
     } catch (e) {
       toast(`Nu s-a salvat: ${e instanceof Error ? e.message : e}`)
     } finally {
       setBusy(false)
+    }
+  }
+
+  const label = 'mb-1 block text-sub font-medium text-ink-3'
+  return (
+    <Modal title="Am ajuns la…" onClose={onClose}>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="col-span-2">
+          <label className={label}>Lucrarea</label>
+          <select
+            value={stage}
+            onChange={(e) => {
+              setStage(e.target.value)
+              setFrom(defaultFrom(data.segments, data.checkpoints, e.target.value))
+            }}
+            className={inputCls}
+          >
+            {cfg.stages.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className={label}>Venind de la</label>
+          <select value={from} onChange={(e) => setFrom(e.target.value)} className={inputCls}>
+            {pts.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className={label}>Am ajuns la</label>
+          <select value={at} onChange={(e) => setAt(e.target.value)} className={inputCls}>
+            <option value="">alege VJ</option>
+            {pts.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="col-span-2 sm:col-span-1">
+          <label className={label}>Data</label>
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} />
+        </div>
+      </div>
+      <p className="mt-4 rounded-[10px] bg-paper-1 px-3 py-2.5 text-row text-ink-2">
+        {!at || at === from
+          ? 'Alege VJ-ul la care ați ajuns.'
+          : plan.length
+            ? `Se bifează gata ${plan.length} ${plan.length === 1 ? 'porțiune' : 'porțiuni'}, ${m1(meters)}: ${plan.map((s) => segmentLabel(s)).join(', ')}.`
+            : `Între ${from} și ${at} totul e deja bifat pentru ${stageLabel(cfg, stage).toLowerCase()}. Se salvează doar punctul.`}
+      </p>
+      <div className="mt-4 flex gap-2">
+        <PrimaryButton onClick={() => void save()} disabled={busy || !at || at === from}>
+          Salvează
+        </PrimaryButton>
+        <GhostButton onClick={onClose}>Renunță</GhostButton>
+      </div>
+    </Modal>
+  )
+}
+
+// ── Panourile (porțiune, lucrare separată) ───────────────────────────────
+
+function SegmentPanel({
+  data,
+  mm,
+  seg,
+  onClose,
+  onChanged,
+}: {
+  data: TrackerData
+  mm: Marks
+  seg: Segment & { id: string }
+  onClose: () => void
+  onChanged: (d: TrackerData) => void
+}) {
+  const cfg = data.tracker.config
+  const list = stagesFor(cfg, seg.kind)
+  const type = cfg.types.find((t) => t.id === seg.kind)
+  const [busy, setBusy] = useState<string | null>(null)
+
+  async function toggle(stage: string) {
+    const on = !isDone(mm, seg.code, stage)
+    const m = { segment_code: seg.code, stage, done_on: azi() }
+    setBusy(stage)
+    try {
+      await setMark(data.tracker.id, m, on)
+      const rest = data.marks.filter((x) => !(x.segment_code === seg.code && x.stage === stage))
+      onChanged({ ...data, marks: on ? [...rest, m] : rest })
+    } catch (e) {
+      toast(`Nu s-a salvat: ${e instanceof Error ? e.message : e}`)
+    } finally {
+      setBusy(null)
     }
   }
 
@@ -326,73 +425,32 @@ function SegmentPanel({
         {m1(Number(seg.length_m))} · {type?.label ?? seg.kind}
         {seg.note ? ` · ${seg.note}` : ''}
       </p>
-
-      <div className="space-y-2.5">
+      <ul className="divide-y divide-line-1">
         {list.map((k) => {
-          const f = filled?.get(k) ?? 0
-          const st = stageState(seg, f)
+          const d = mm.get(seg.code)?.get(k)
           return (
-            <div key={k} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1">
-              <span className="text-row font-semibold text-ink-1">{stageLabel(cfg, k)}</span>
-              <span className="text-row tabular-nums text-ink-3">
-                {num(f, 1)} / {m1(Number(seg.length_m))} <Pill tone={STARE_TONE[st]}>{STARE_LABEL[st]}</Pill>
-              </span>
-              <div className="col-span-2 h-1.5 rounded-full bg-track">
-                <div
-                  className="h-full rounded-full"
-                  style={{ width: `${Math.min(1, f / Number(seg.length_m)) * 100}%`, background: STARE_FILL[st] }}
-                />
+            <li key={k} className="flex items-center justify-between gap-3 py-2.5">
+              <div>
+                <p className="text-row font-semibold text-ink-1">{stageLabel(cfg, k)}</p>
+                {d && <p className="text-sub text-ink-4">gata din {dataRo(d)}</p>}
               </div>
-            </div>
+              <button
+                onClick={() => void toggle(k)}
+                disabled={busy === k}
+                aria-pressed={!!d}
+                className={`rounded-full px-3.5 py-1.5 text-sub font-semibold transition-colors duration-[120ms] ease-std ${
+                  d ? 'bg-pos-fill text-paper-0' : 'bg-segment text-ink-2 hover:text-ink-1'
+                }`}
+              >
+                {d ? '✓ Gata' : 'Bifează gata'}
+              </button>
+            </li>
           )
         })}
-      </div>
-
-      <h4 className="mt-6 text-row font-semibold text-ink-1">Adaugă în jurnal</h4>
-      <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-[150px_minmax(0,1fr)_110px]">
-        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} aria-label="Data" />
-        <select value={stage} onChange={(e) => setStage(e.target.value)} className={inputCls} aria-label="Etapa">
-          {list.map((k) => (
-            <option key={k} value={k}>
-              {stageLabel(cfg, k)}
-            </option>
-          ))}
-        </select>
-        <input
-          inputMode="decimal"
-          value={qty}
-          onChange={(e) => setQty(e.target.value)}
-          placeholder="metri"
-          className={inputCls}
-          aria-label="Metri"
-        />
-      </div>
-      <div className="mt-3 flex flex-wrap gap-2">
-        <PrimaryButton onClick={() => void add(toNum(qty))} disabled={busy}>
-          Adaugă
-        </PrimaryButton>
-        {left > 0.05 && (
-          <GhostButton onClick={() => void add(Math.round(left * 100) / 100)} disabled={busy}>
-            Gata pe toată porțiunea · {m1(left)}
-          </GhostButton>
-        )}
-      </div>
-
-      <h4 className="mt-6 text-row font-semibold text-ink-1">Zi cu zi</h4>
-      {hist.length === 0 ? (
-        <p className="mt-1 text-row text-ink-3">Nimic lucrat aici încă.</p>
-      ) : (
-        <ul className="mt-2 divide-y divide-line-1">
-          {hist.map((h, i) => (
-            <li key={i} className="flex justify-between gap-3 py-1.5 text-row">
-              <span className="text-ink-2">
-                {dataRo(h.date)} · {stageLabel(cfg, h.stage)}
-              </span>
-              <span className="tabular-nums text-ink-1">{m1(h.qty)}</span>
-            </li>
-          ))}
-        </ul>
-      )}
+      </ul>
+      <p className="mt-3 text-sub text-ink-3">
+        Folosește bifele doar pentru corecturi. De obicei se bifează cu „Am ajuns la…".
+      </p>
     </Modal>
   )
 }
@@ -456,24 +514,17 @@ function PointPanel({
 
 // ── Cum stăm azi ─────────────────────────────────────────────────────────
 
-function CumStamAzi({
-  data,
-  alloc,
-  setData,
-}: {
-  data: TrackerData
-  alloc: Allocation
-  setData: (d: TrackerData) => void
-}) {
+function CumStamAzi({ data, setData }: { data: TrackerData; setData: (d: TrackerData) => void }) {
   const cfg = data.tracker.config
-  const sum = summarize(cfg, data.segments, alloc)
-  const grid = useMemo(() => workGrid(cfg, data.segments, data.entries, azi()), [cfg, data])
+  const mm = useMemo(() => markMap(data.marks), [data.marks])
+  const sum = summarize(cfg, data.segments, mm)
+  const progress = workProgress(cfg, data.segments, mm, data.checkpoints)
   const [view, setView] = useState('all')
-  const [day, setDay] = useState('')
   const [seg, setSeg] = useState<(Segment & { id: string }) | null>(null)
   const [point, setPoint] = useState<PointRow | null>(null)
-  const days = [...new Set(data.entries.map((e) => e.work_date))].sort().reverse()
+  const [cpStage, setCpStage] = useState<string | null>(null)
   const pctOf = (v: number) => (sum.total > 0 ? Math.round((v / sum.total) * 100) : 0)
+  const front = view === 'all' ? null : (progress.find((p) => p.stage.id === view)?.front?.at_pt ?? null)
 
   return (
     <div className="space-y-5">
@@ -495,49 +546,55 @@ function CumStamAzi({
         ))}
       </div>
 
-      <Card title="Progres pe lucrări" subtitle="Realizat din de executat, pe fiecare lucrare. Sudurile nu au o cantitate de executat.">
-        <div className="space-y-3">
-          {grid.rows.map((g) => (
-            <div key={g.stage.id} className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1 sm:grid-cols-[160px_minmax(0,1fr)_170px]">
-              <span className="text-row text-ink-1">{g.stage.label}</span>
-              <div className="col-span-2 row-start-2 h-2 rounded-full bg-track sm:col-span-1 sm:row-start-auto">
-                <div className="h-full rounded-full bg-pos-fill" style={{ width: `${Math.min(1, g.pct ?? 0) * 100}%` }} />
-              </div>
-              <span className="text-right text-row tabular-nums text-ink-3">
-                {g.total !== null ? `${qtyText(g.stage, g.done).replace(/ (m|buc)$/, '')} / ${qtyText(g.stage, g.total)}` : qtyText(g.stage, g.done)}
+      <Card
+        title="Unde am ajuns"
+        subtitle="Se numără doar ce e terminat. Când șeful de șantier spune „cu săpătura am ajuns la VJ47”, apasă „Am ajuns la…”."
+      >
+        <ul className="divide-y divide-line-1">
+          {progress.map((p) => (
+            <li key={p.stage.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5 py-3 md:grid-cols-[170px_110px_minmax(0,1fr)_150px_auto]">
+              <span className="text-row font-semibold text-ink-1">{p.stage.label}</span>
+              <span className="text-right text-row text-ink-2 md:text-left">
+                {p.front ? (
+                  <>
+                    la <span className="font-bold text-ink-1">{p.front.at_pt}</span>
+                  </>
+                ) : (
+                  <span className="text-ink-4">fără punct</span>
+                )}
               </span>
-            </div>
+              <div className="col-span-2 h-2 rounded-full bg-track md:col-span-1">
+                <div className="h-full rounded-full bg-pos-fill" style={{ width: `${p.total ? (p.done / p.total) * 100 : 0}%` }} />
+              </div>
+              <span className="text-row tabular-nums text-ink-3 md:text-right">
+                {num(p.done, 1)} / {m1(p.total)}
+                {p.lastDay && <span className="block text-sub text-ink-4">ultima bifă {zz(p.lastDay)}</span>}
+              </span>
+              <div className="text-right">
+                <GhostButton onClick={() => setCpStage(p.stage.id)}>Am ajuns la…</GhostButton>
+              </div>
+            </li>
           ))}
-        </div>
+        </ul>
       </Card>
 
       <Card
         title="Traseu"
-        subtitle="Apasă pe o porțiune pentru a vedea ce s-a făcut zi cu zi sau pentru a adăuga în jurnal. Punctele de sub porțiune sunt etapele: verde gata, galben în lucru, gri neînceput."
+        subtitle="Verde = gata. Alege o lucrare pentru a vedea până unde s-a ajuns. Apasă pe o porțiune pentru a vedea ziua în care a fost gata sau pentru a corecta o bifă."
       >
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Ce arată traseul">
-            {[{ id: 'all', label: 'Stare generală' }, ...sum.byStage].map((g) => (
-              <button
-                key={g.id}
-                onClick={() => setView(g.id)}
-                aria-pressed={view === g.id}
-                className={`rounded-full px-3 py-1.5 text-sub font-semibold transition-colors duration-[120ms] ease-std ${
-                  view === g.id ? 'bg-ink-1 text-paper-0' : 'bg-segment text-ink-2 hover:text-ink-1'
-                }`}
-              >
-                {g.label}
-              </button>
-            ))}
-          </div>
-          <select value={day} onChange={(e) => setDay(e.target.value)} className={`${inputCls} !w-auto`} aria-label="Arată o zi">
-            <option value="">Toate zilele</option>
-            {days.map((d) => (
-              <option key={d} value={d}>
-                Ce s-a făcut pe {dataRo(d)}
-              </option>
-            ))}
-          </select>
+        <div className="mb-3 flex flex-wrap gap-1.5" role="group" aria-label="Ce arată traseul">
+          {[{ id: 'all', label: 'Stare generală' }, ...cfg.stages].map((g) => (
+            <button
+              key={g.id}
+              onClick={() => setView(g.id)}
+              aria-pressed={view === g.id}
+              className={`rounded-full px-3 py-1.5 text-sub font-semibold transition-colors duration-[120ms] ease-std ${
+                view === g.id ? 'bg-ink-1 text-paper-0' : 'bg-segment text-ink-2 hover:text-ink-1'
+              }`}
+            >
+              {g.label}
+            </button>
+          ))}
         </div>
         <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 text-sub text-ink-3">
           {cfg.types.map((t) => (
@@ -547,14 +604,8 @@ function CumStamAzi({
               {sum.byType[t.id] ? ` ${m1(sum.byType[t.id])}` : ''}
             </span>
           ))}
-          {day && (
-            <span className="inline-flex items-center gap-1.5">
-              <span className="inline-block h-3 w-5 rounded-full border-2" style={{ borderColor: color.info }} />
-              lucrat pe {dataRo(day)}
-            </span>
-          )}
         </div>
-        <Traseu data={data} alloc={alloc} view={view} day={day} onSegment={setSeg} onPoint={setPoint} />
+        <Traseu data={data} mm={mm} view={view} front={front} onSegment={setSeg} onPoint={setPoint} />
       </Card>
 
       <section>
@@ -571,15 +622,10 @@ function CumStamAzi({
         </div>
       </section>
 
-      {seg && (
-        <SegmentPanel
-          data={data}
-          alloc={alloc}
-          seg={seg}
-          onClose={() => setSeg(null)}
-          onAdded={(rows) => setData({ ...data, entries: [...data.entries, ...rows] })}
-        />
+      {cpStage && (
+        <CheckpointModal data={data} mm={mm} stage={cpStage} onClose={() => setCpStage(null)} onSaved={setData} />
       )}
+      {seg && <SegmentPanel data={data} mm={mm} seg={seg} onClose={() => setSeg(null)} onChanged={setData} />}
       {point && (
         <PointPanel
           point={point}
@@ -595,15 +641,10 @@ function CumStamAzi({
 
 export function TrackerProiect({ trackerId }: { trackerId: string }) {
   const { data, error, reload, setData } = useTracker(trackerId)
-  const [tab, setTab] = useState<'azi' | 'zile' | 'jurnal' | 'portiuni'>('azi')
-  const [seg, setSeg] = useState<(Segment & { id: string }) | null>(null)
-  const alloc = useMemo(
-    () => (data ? allocate(data.tracker.config, data.segments, data.entries) : null),
-    [data]
-  )
+  const [tab, setTab] = useState<'azi' | 'jurnal'>('azi')
 
   if (error) return <ErrorStrip message={`Nu am putut încărca trackerul: ${error}`} onRetry={() => void reload()} />
-  if (!data || !alloc) return <Skeleton className="h-64 w-full" />
+  if (!data) return <Skeleton className="h-64 w-full" />
 
   return (
     <div>
@@ -612,32 +653,16 @@ export function TrackerProiect({ trackerId }: { trackerId: string }) {
           {data.tracker.subtitle && <p className="text-sub font-semibold text-ink-3">{data.tracker.subtitle}</p>}
           <h2 className="text-card font-semibold text-ink-1">{data.tracker.name}</h2>
         </div>
-        <div className="max-w-full overflow-x-auto">
-          <SegmentedControl
-            value={tab}
-            onChange={setTab}
-            options={[
-              { value: 'azi', label: 'Cum stăm azi' },
-              { value: 'zile', label: 'Pe zile' },
-              { value: 'jurnal', label: 'Jurnal' },
-              { value: 'portiuni', label: 'Pe porțiuni' },
-            ]}
-          />
-        </div>
-      </div>
-      {tab === 'azi' && <CumStamAzi data={data} alloc={alloc} setData={setData} />}
-      {tab === 'zile' && <PeZile data={data} alloc={alloc} />}
-      {tab === 'jurnal' && <Jurnal data={data} alloc={alloc} setData={setData} />}
-      {tab === 'portiuni' && <PePortiuni data={data} alloc={alloc} onOpenSegment={setSeg} />}
-      {seg && (
-        <SegmentPanel
-          data={data}
-          alloc={alloc}
-          seg={seg}
-          onClose={() => setSeg(null)}
-          onAdded={(rows) => setData({ ...data, entries: [...data.entries, ...rows] })}
+        <SegmentedControl
+          value={tab}
+          onChange={setTab}
+          options={[
+            { value: 'azi', label: 'Cum stăm azi' },
+            { value: 'jurnal', label: 'Jurnal zilnic' },
+          ]}
         />
-      )}
+      </div>
+      {tab === 'azi' ? <CumStamAzi data={data} setData={setData} /> : <JurnalZilnic data={data} setData={setData} />}
     </div>
   )
 }
