@@ -7,6 +7,8 @@ import { Sidebar, type Nav } from './components/Shell'
 import { ErrorStrip, Skeleton, StatCardSkeleton } from './components/ui'
 import { DashboardView } from './views/Dashboard'
 import { ProjectsView } from './views/Projects'
+import { ClientiView } from './views/Clienti'
+import { useTrackerList } from './data/tracker'
 import { ProjectPageView } from './views/ProjectPage'
 import { GanttView } from './views/Gantt'
 import { LookaheadView } from './views/Lookahead'
@@ -47,6 +49,10 @@ function OfficeApp({ email }: { email: string }) {
   const [newVariation, setNewVariation] = useState(false)
   const { projects, loading, error, refetch, patchEntity } = useProjectTree()
   const { variations, patchVariation, addLocal } = useVariations()
+  const trackers = useTrackerList()
+  // de unde s-a deschis proiectul: „Înapoi" duce la Clienți sau la Proiecte
+  const [fromClienti, setFromClienti] = useState(false)
+  const [clientId, setClientId] = useState<string | null>(null)
 
   // Ghidul de stil nu are loc în meniu: se deschide cu #styleguide în adresă.
   useEffect(() => {
@@ -63,7 +69,15 @@ function OfficeApp({ email }: { email: string }) {
 
   const shell = (content: React.ReactNode) => (
     <>
-      <Sidebar active={navActive} onNav={(n) => setScreen(n)} email={email} />
+      <Sidebar
+        active={navActive === 'proiecte' && fromClienti ? 'clienti' : navActive}
+        onNav={(n) => {
+          if (n === 'proiecte') setFromClienti(false)
+          if (n === 'clienti') setClientId(null)
+          setScreen(n)
+        }}
+        email={email}
+      />
       <main className="pt-14 md:pl-[212px] md:pt-0">{content}</main>
     </>
   )
@@ -86,8 +100,9 @@ function OfficeApp({ email }: { email: string }) {
   // cronologicul are nevoie de job; dacă a dispărut între timp, cădem pe proiecte
   const effScreen: Screen = screen === 'cronologic' && (!project || !job) ? 'proiecte' : screen
 
-  function openInProject(s: Selection) {
+  function openInProject(s: Selection, fromClients = false) {
     setSel(s)
+    setFromClienti(fromClients)
     setScreen('proiecte')
   }
 
@@ -112,7 +127,12 @@ function OfficeApp({ email }: { email: string }) {
             p={project}
             sel={resolved}
             onSelect={setSel}
-            onBack={() => setSel({})}
+            onBack={() => {
+              setSel({})
+              if (fromClienti) setScreen('clienti')
+            }}
+            backLabel={fromClienti ? 'Clienți' : 'Proiecte'}
+            trackers={trackers}
             onRefetch={refetch}
             patchEntity={patchEntity}
             variations={variations}
@@ -127,10 +147,20 @@ function OfficeApp({ email }: { email: string }) {
           <ProjectsView
             projects={projects}
             variations={variations}
-            onOpen={(projectId) => setSel({ projectId })}
+            onOpen={(projectId) => openInProject({ projectId })}
             onNew={() => setScreen('config')}
           />
         ))}
+
+      {effScreen === 'clienti' && (
+        <ClientiView
+          projects={projects}
+          trackerKeys={new Set(trackers.map((t) => (t.job_id ? `${t.project_id}/${t.job_id}` : t.project_id)))}
+          onOpen={(s) => openInProject(s, true)}
+          openId={clientId}
+          setOpenId={setClientId}
+        />
+      )}
 
       {effScreen === 'variatii' && (
         <VariatiiView
