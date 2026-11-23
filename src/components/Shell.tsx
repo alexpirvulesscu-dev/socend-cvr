@@ -6,6 +6,7 @@ import { signOut } from '../lib/auth'
 
 export type Nav =
   | 'dashboard'
+  | 'clienti'
   | 'proiecte'
   | 'gantt'
   | 'urmeaza'
@@ -15,6 +16,7 @@ export type Nav =
 
 const NAV_ITEMS: { key: Nav; label: string }[] = [
   { key: 'dashboard', label: 'Dashboard' },
+  { key: 'clienti', label: 'Clienți' },
   { key: 'proiecte', label: 'Proiecte' },
   { key: 'gantt', label: 'Program' },
   { key: 'urmeaza', label: 'Ce urmează' },

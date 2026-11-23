@@ -33,8 +33,9 @@ import { VariatiiView } from './Variatii'
 import { CosturiProiect } from './project/Costuri'
 import { ManoperaProiect } from './project/Manopera'
 import { StructuraProiect } from './project/Structura'
+import { TrackerProiect } from './project/Tracker'
 
-type SubTab = 'prezentare' | 'manopera' | 'costuri' | 'variatii' | 'program' | 'documente'
+type SubTab = 'prezentare' | 'tracker' | 'manopera' | 'costuri' | 'variatii' | 'program' | 'documente'
 
 /** Verdictul proiectului — aceeași regulă ca pe cardul din listă. */
 function verdict(p: ProjectWithKpis): { label: string; tone: Tone } {
@@ -153,6 +154,8 @@ export function ProjectPageView({
   patchVariation,
   addLocal,
   onOpenCronologic,
+  trackers = [],
+  backLabel = 'Proiecte',
 }: {
   p: ProjectWithKpis
   sel: Selection
@@ -164,8 +167,13 @@ export function ProjectPageView({
   patchVariation: (id: string, next: Partial<VariationRow> | null) => void
   addLocal: (v: VariationRow) => void
   onOpenCronologic: (projectId: string, jobId: string) => void
+  /** trackerele proiectului; cel al jobului selectat are întâietate */
+  trackers?: { id: string; project_id: string; job_id: string | null }[]
+  backLabel?: string
 }) {
   const [tab, setTab] = useState<SubTab>('prezentare')
+  const own = trackers.filter((t) => t.project_id === p.id)
+  const tracker = own.find((t) => t.job_id && t.job_id === sel.jobId) ?? own.find((t) => !t.job_id)
   const save = useMemo(() => makeSave(patchEntity), [patchEntity])
   // orele reale din Pontaj (deocamdată doar pe proiect)
   const { hours } = useLabourHours()
@@ -181,7 +189,7 @@ export function ProjectPageView({
     <div className="mx-auto max-w-[1600px] px-8 py-6">
       <PageHeader
         title={p.name}
-        back={<BackLink label="Proiecte" onClick={onBack} />}
+        back={<BackLink label={backLabel} onClick={onBack} />}
         pill={<Pill tone={v.tone}>{v.label}</Pill>}
       />
 
@@ -195,6 +203,7 @@ export function ProjectPageView({
           onChange={setTab}
           options={[
             { value: 'prezentare', label: 'Prezentare' },
+            ...(tracker ? [{ value: 'tracker' as const, label: 'Tracker' }] : []),
             { value: 'manopera', label: 'Manoperă' },
             { value: 'costuri', label: 'Costuri' },
             {
@@ -227,6 +236,8 @@ export function ProjectPageView({
           hours={hours}
         />
       )}
+
+      {tab === 'tracker' && tracker && <TrackerProiect key={tracker.id} trackerId={tracker.id} />}
 
       {tab === 'manopera' && <ManoperaProiect p={p} save={save} hours={hours} />}
 

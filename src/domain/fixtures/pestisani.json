@@ -1,0 +1,602 @@
+{
+ "config": {
+  "unit": "m",
+  "types": [
+   {
+    "id": "verde",
+    "label": "Săpătură în spațiu verde",
+    "short": "spațiu verde",
+    "color": "#2E9E6B"
+   },
+   {
+    "id": "acost",
+    "label": "Săpătură în acostament (1,4 m)",
+    "short": "acostament",
+    "color": "#B0765C"
+   },
+   {
+    "id": "console",
+    "label": "Țeavă pe console metalice",
+    "short": "console",
+    "color": "#47698F"
+   },
+   {
+    "id": "suport",
+    "label": "Suport metalic pe fundații beton",
+    "short": "fundații + suport",
+    "color": "#5FA8A0"
+   }
+  ],
+  "groups": [
+   {
+    "id": "transee",
+    "label": "Tranșee (spațiu verde și acostament)"
+   },
+   {
+    "id": "console",
+    "label": "Console"
+   },
+   {
+    "id": "sudura",
+    "label": "Sudură țeavă PEHD"
+   }
+  ],
+  "stages": [
+   {
+    "id": "sapat",
+    "label": "Săpătură",
+    "unit": "ml",
+    "group": "transee"
+   },
+   {
+    "id": "teava",
+    "label": "Montaj țeavă",
+    "unit": "ml",
+    "group": "transee"
+   },
+   {
+    "id": "umplutura",
+    "label": "Umplutură",
+    "unit": "ml",
+    "group": "transee"
+   },
+   {
+    "id": "refacere",
+    "label": "Refacere (la gata)",
+    "unit": "ml",
+    "group": "transee"
+   },
+   {
+    "id": "console",
+    "label": "Montaj console",
+    "unit": "buc",
+    "group": "console",
+    "target": 2
+   },
+   {
+    "id": "teava_console",
+    "label": "Țeavă pe console",
+    "unit": "ml",
+    "group": "console"
+   },
+   {
+    "id": "sudura",
+    "label": "Suduri",
+    "unit": "buc",
+    "group": "sudura"
+   }
+  ],
+  "stagesByType": {
+   "verde": [
+    "sapat",
+    "teava",
+    "umplutura",
+    "refacere"
+   ],
+   "acost": [
+    "sapat",
+    "teava",
+    "umplutura",
+    "refacere"
+   ],
+   "console": [
+    "teava_console"
+   ],
+   "suport": [
+    "teava_console"
+   ]
+  }
+ },
+ "segments": [
+  {
+   "code": "s36",
+   "from_pt": "VJ36",
+   "to_pt": "VJ37",
+   "part": 0,
+   "parts": 1,
+   "length_m": 18.4,
+   "kind": "verde",
+   "sort_order": 1
+  },
+  {
+   "code": "s37",
+   "from_pt": "VJ37",
+   "to_pt": "VJ38",
+   "part": 0,
+   "parts": 1,
+   "length_m": 18.0,
+   "kind": "verde",
+   "sort_order": 2
+  },
+  {
+   "code": "s38a",
+   "from_pt": "VJ38",
+   "to_pt": "VJ39",
+   "part": 0,
+   "parts": 2,
+   "length_m": 13.5,
+   "kind": "verde",
+   "sort_order": 3
+  },
+  {
+   "code": "s38b",
+   "from_pt": "VJ38",
+   "to_pt": "VJ39",
+   "part": 1,
+   "parts": 2,
+   "length_m": 15.7,
+   "kind": "suport",
+   "sort_order": 4
+  },
+  {
+   "code": "s39a",
+   "from_pt": "VJ39",
+   "to_pt": "VJ40",
+   "part": 0,
+   "parts": 2,
+   "length_m": 10.3,
+   "kind": "suport",
+   "sort_order": 5
+  },
+  {
+   "code": "s39b",
+   "from_pt": "VJ39",
+   "to_pt": "VJ40",
+   "part": 1,
+   "parts": 2,
+   "length_m": 16.0,
+   "kind": "console",
+   "sort_order": 6
+  },
+  {
+   "code": "s40",
+   "from_pt": "VJ40",
+   "to_pt": "VJ41",
+   "part": 0,
+   "parts": 1,
+   "length_m": 26.7,
+   "kind": "console",
+   "sort_order": 7
+  },
+  {
+   "code": "s41",
+   "from_pt": "VJ41",
+   "to_pt": "VJ42",
+   "part": 0,
+   "parts": 1,
+   "length_m": 40.7,
+   "kind": "console",
+   "sort_order": 8
+  },
+  {
+   "code": "s42",
+   "from_pt": "VJ42",
+   "to_pt": "VJ43",
+   "part": 0,
+   "parts": 1,
+   "length_m": 34.1,
+   "kind": "console",
+   "sort_order": 9
+  },
+  {
+   "code": "s43",
+   "from_pt": "VJ43",
+   "to_pt": "VJ44",
+   "part": 0,
+   "parts": 1,
+   "length_m": 21.7,
+   "kind": "console",
+   "sort_order": 10
+  },
+  {
+   "code": "s44",
+   "from_pt": "VJ44",
+   "to_pt": "VJ45",
+   "part": 0,
+   "parts": 1,
+   "length_m": 33.9,
+   "kind": "console",
+   "sort_order": 11
+  },
+  {
+   "code": "s45a",
+   "from_pt": "VJ45",
+   "to_pt": "VJ46",
+   "part": 0,
+   "parts": 2,
+   "length_m": 30.0,
+   "kind": "console",
+   "sort_order": 12
+  },
+  {
+   "code": "s45b",
+   "from_pt": "VJ45",
+   "to_pt": "VJ46",
+   "part": 1,
+   "parts": 2,
+   "length_m": 4.1,
+   "kind": "acost",
+   "sort_order": 13
+  },
+  {
+   "code": "s46",
+   "from_pt": "VJ46",
+   "to_pt": "VJ47",
+   "part": 0,
+   "parts": 1,
+   "length_m": 28.5,
+   "kind": "acost",
+   "sort_order": 14
+  },
+  {
+   "code": "s47",
+   "from_pt": "VJ47",
+   "to_pt": "VJ48",
+   "part": 0,
+   "parts": 1,
+   "length_m": 24.4,
+   "kind": "acost",
+   "sort_order": 15
+  },
+  {
+   "code": "s48",
+   "from_pt": "VJ48",
+   "to_pt": "VJ49",
+   "part": 0,
+   "parts": 1,
+   "length_m": 25.1,
+   "kind": "acost",
+   "sort_order": 16
+  },
+  {
+   "code": "s49",
+   "from_pt": "VJ49",
+   "to_pt": "VJ50",
+   "part": 0,
+   "parts": 1,
+   "length_m": 62.4,
+   "kind": "acost",
+   "sort_order": 17
+  },
+  {
+   "code": "s50",
+   "from_pt": "VJ50",
+   "to_pt": "VJ51",
+   "part": 0,
+   "parts": 1,
+   "length_m": 17.4,
+   "kind": "acost",
+   "sort_order": 18
+  },
+  {
+   "code": "s51",
+   "from_pt": "VJ51",
+   "to_pt": "VJ52",
+   "part": 0,
+   "parts": 1,
+   "length_m": 32.4,
+   "kind": "acost",
+   "sort_order": 19
+  },
+  {
+   "code": "s52",
+   "from_pt": "VJ52",
+   "to_pt": "VJ53",
+   "part": 0,
+   "parts": 1,
+   "length_m": 20.6,
+   "kind": "acost",
+   "sort_order": 20
+  },
+  {
+   "code": "s53",
+   "from_pt": "VJ53",
+   "to_pt": "VJ54",
+   "part": 0,
+   "parts": 1,
+   "length_m": 32.5,
+   "kind": "acost",
+   "sort_order": 21
+  },
+  {
+   "code": "s54",
+   "from_pt": "VJ54",
+   "to_pt": "VJ55",
+   "part": 0,
+   "parts": 1,
+   "length_m": 17.8,
+   "kind": "acost",
+   "sort_order": 22
+  },
+  {
+   "code": "s55",
+   "from_pt": "VJ55",
+   "to_pt": "VJ56",
+   "part": 0,
+   "parts": 1,
+   "length_m": 34.3,
+   "kind": "acost",
+   "sort_order": 23
+  },
+  {
+   "code": "s56",
+   "from_pt": "VJ56",
+   "to_pt": "VJ57",
+   "part": 0,
+   "parts": 1,
+   "length_m": 11.0,
+   "kind": "acost",
+   "sort_order": 24
+  },
+  {
+   "code": "s57",
+   "from_pt": "VJ57",
+   "to_pt": "VJ58",
+   "part": 0,
+   "parts": 1,
+   "length_m": 29.2,
+   "kind": "acost",
+   "sort_order": 25
+  },
+  {
+   "code": "s58",
+   "from_pt": "VJ58",
+   "to_pt": "VJ59",
+   "part": 0,
+   "parts": 1,
+   "length_m": 76.3,
+   "kind": "acost",
+   "sort_order": 26
+  },
+  {
+   "code": "s59a",
+   "from_pt": "VJ59",
+   "to_pt": "VJ60",
+   "part": 0,
+   "parts": 2,
+   "length_m": 25.0,
+   "kind": "acost",
+   "sort_order": 27
+  },
+  {
+   "code": "s59b",
+   "from_pt": "VJ59",
+   "to_pt": "VJ60",
+   "part": 1,
+   "parts": 2,
+   "length_m": 6.2,
+   "kind": "verde",
+   "sort_order": 28
+  },
+  {
+   "code": "s60",
+   "from_pt": "VJ60",
+   "to_pt": "VJ61",
+   "part": 0,
+   "parts": 1,
+   "length_m": 4.0,
+   "kind": "verde",
+   "sort_order": 29
+  },
+  {
+   "code": "s61",
+   "from_pt": "VJ61",
+   "to_pt": "VJ62",
+   "part": 0,
+   "parts": 1,
+   "length_m": 22.3,
+   "kind": "verde",
+   "sort_order": 30
+  },
+  {
+   "code": "s62",
+   "from_pt": "VJ62",
+   "to_pt": "VJ63",
+   "part": 0,
+   "parts": 1,
+   "length_m": 23.9,
+   "kind": "verde",
+   "sort_order": 31
+  },
+  {
+   "code": "s63",
+   "from_pt": "VJ63",
+   "to_pt": "VJ64",
+   "part": 0,
+   "parts": 1,
+   "length_m": 47.0,
+   "kind": "verde",
+   "sort_order": 32
+  },
+  {
+   "code": "s64",
+   "from_pt": "VJ64",
+   "to_pt": "VJ65",
+   "part": 0,
+   "parts": 1,
+   "length_m": 15.3,
+   "kind": "verde",
+   "sort_order": 33
+  },
+  {
+   "code": "s65",
+   "from_pt": "VJ65",
+   "to_pt": "VJ66",
+   "part": 0,
+   "parts": 1,
+   "length_m": 27.8,
+   "kind": "verde",
+   "sort_order": 34
+  },
+  {
+   "code": "s66",
+   "from_pt": "VJ66",
+   "to_pt": "VJ67",
+   "part": 0,
+   "parts": 1,
+   "length_m": 45.1,
+   "kind": "verde",
+   "sort_order": 35
+  },
+  {
+   "code": "s67",
+   "from_pt": "VJ67",
+   "to_pt": "VJ68",
+   "part": 0,
+   "parts": 1,
+   "length_m": 18.3,
+   "kind": "verde",
+   "sort_order": 36
+  },
+  {
+   "code": "s68",
+   "from_pt": "VJ68",
+   "to_pt": "VJ69",
+   "part": 0,
+   "parts": 1,
+   "length_m": 14.1,
+   "kind": "verde",
+   "sort_order": 37
+  },
+  {
+   "code": "s69",
+   "from_pt": "VJ69",
+   "to_pt": "VJ70",
+   "part": 0,
+   "parts": 1,
+   "length_m": 42.8,
+   "kind": "verde",
+   "sort_order": 38
+  },
+  {
+   "code": "s70",
+   "from_pt": "VJ70",
+   "to_pt": "VJ71",
+   "part": 0,
+   "parts": 1,
+   "length_m": 62.5,
+   "kind": "verde",
+   "sort_order": 39
+  },
+  {
+   "code": "s71",
+   "from_pt": "VJ71",
+   "to_pt": "VJ72",
+   "part": 0,
+   "parts": 1,
+   "length_m": 25.7,
+   "kind": "verde",
+   "sort_order": 40
+  },
+  {
+   "code": "s72",
+   "from_pt": "VJ72",
+   "to_pt": "VJ73",
+   "part": 0,
+   "parts": 1,
+   "length_m": 20.6,
+   "kind": "verde",
+   "sort_order": 41
+  },
+  {
+   "code": "s73",
+   "from_pt": "VJ73",
+   "to_pt": "VJ74",
+   "part": 0,
+   "parts": 1,
+   "length_m": 27.7,
+   "kind": "console",
+   "sort_order": 42
+  },
+  {
+   "code": "s74a",
+   "from_pt": "VJ74",
+   "to_pt": "VJ75",
+   "part": 0,
+   "parts": 2,
+   "length_m": 20.0,
+   "kind": "console",
+   "sort_order": 43
+  },
+  {
+   "code": "s74b",
+   "from_pt": "VJ74",
+   "to_pt": "VJ75",
+   "part": 1,
+   "parts": 2,
+   "length_m": 16.6,
+   "kind": "verde",
+   "sort_order": 44
+  },
+  {
+   "code": "s75",
+   "from_pt": "VJ75",
+   "to_pt": "VJ76",
+   "part": 0,
+   "parts": 1,
+   "length_m": 16.5,
+   "kind": "verde",
+   "sort_order": 45
+  },
+  {
+   "code": "s76",
+   "from_pt": "VJ76",
+   "to_pt": "VJ77",
+   "part": 0,
+   "parts": 1,
+   "length_m": 15.8,
+   "kind": "verde",
+   "sort_order": 46
+  },
+  {
+   "code": "s77",
+   "from_pt": "VJ77",
+   "to_pt": "VJ78",
+   "part": 0,
+   "parts": 1,
+   "length_m": 13.3,
+   "kind": "verde",
+   "sort_order": 47
+  },
+  {
+   "code": "s78",
+   "from_pt": "VJ78",
+   "to_pt": "VJ79",
+   "part": 0,
+   "parts": 1,
+   "length_m": 11.2,
+   "kind": "verde",
+   "sort_order": 48
+  },
+  {
+   "code": "s79",
+   "from_pt": "VJ79",
+   "to_pt": "VJ80",
+   "part": 0,
+   "parts": 1,
+   "length_m": 31.3,
+   "kind": "verde",
+   "sort_order": 49
+  }
+ ]
+}

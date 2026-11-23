@@ -58,6 +58,15 @@ Single-page React app → Supabase (Postgres + Auth + RLS). Shared skeleton tabl
 ### Phase 8: Ship
 - [x] Update `BRIEF.md` checkboxes and `DECISIONS.md`, push `feature/cvr-v1`, open PR with `gh pr create` including summary + `/qa` screenshots, then STOP (acceptance: PR URL printed; nothing merged) — repo: https://github.com/alexpirvulesscu-dev/socend-cvr
 
+### Phase 9: Clienți + Tracker Peștișani (23 nov. 2026)
+- [x] Migrare `0027_cvr_clients_tracker`: clienți (grupare pe ecran), tracker, porțiuni, lucrări separate, jurnal; RLS; job nou „Betonare CS - Etapa 1" · `b7ab937`
+- [x] Migrare `0028_seed_tracker_pestisani` + `src/domain/tracker.ts` cu teste (împărțirea metrilor pe porțiuni, pornirea din pagina Peștișani) · `b7ab937`
+- [x] Ecranul Clienți: 3 clienți, apoi proiectele fiecăruia (screenshot `/qa/08-*.png`) · `31d1d20`
+- [x] Fila Tracker: „Cum stăm azi" (hartă, etape, cămine) și „Jurnal zilnic" (zi cu zi, de la VJ la VJ); adăugare și ștergere verificate cap-coadă (screenshot `/qa/09-*.png`, `/qa/10-*.png`) · `31d1d20`
+- [x] Jurnalul refăcut ca Excelul: Pe zile, Jurnal, Pe porțiuni (migrarea `0029_cvr_tracker_excel`; screenshot `/qa/10-*.png`, `/qa/11-*.png`, `/qa/12-*.png`)
+- [x] Puncte de control pe „Cum stăm azi" + jurnal zilnic într-o singură foaie (migrarea `0030_cvr_tracker_checkpoints`; screenshot `/qa/09-*.png`, `/qa/11-*.png`)
+- [ ] Faza 2: situații de lucrări și situații de plată din tracker, pentru Socend și pentru subcontractori (pe proiect: cu sau fără subcontractor)
+
 ## External Services
 - Supabase shared project `rvqsjxgybqbphrnhhyfz` (exists; keys via Supabase MCP)
 - claude_design MCP `https://api.anthropic.com/v1/design/mcp` (auth once via `/design-login`)
