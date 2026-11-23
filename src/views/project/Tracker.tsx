@@ -5,7 +5,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   allocate,
-  boundaries,
   dayTouches,
   segmentHistory,
   segmentLabel,
@@ -13,6 +12,7 @@ import {
   stageState,
   stagesFor,
   summarize,
+  workGrid,
   STARE_LABEL,
   type Allocation,
   type Segment,
@@ -22,7 +22,6 @@ import {
 import {
   addEntries,
   azi,
-  deleteEntry,
   updatePoint,
   useTracker,
   type EntryRow,
@@ -30,10 +29,10 @@ import {
   type TrackerData,
 } from '../../data/tracker'
 import { color } from '../../design/tokens'
+import { Jurnal, PePortiuni, PeZile, qtyText } from './TrackerTabele'
 import { dataRo, num, toNum } from '../../lib/format'
 import {
   Card,
-  EmptyState,
   ErrorStrip,
   GhostButton,
   Modal,
@@ -49,16 +48,6 @@ const STARE_FILL: Record<Stare, string> = { done: color.posFill, ip: color.warnF
 const STARE_TONE: Record<Stare, Tone> = { done: 'pos', ip: 'warn', ns: 'neutral' }
 
 const m1 = (n: number) => `${num(n, 1)} m`
-
-function ziLunga(iso: string): string {
-  const s = new Date(iso + 'T00:00:00').toLocaleDateString('ro-RO', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  })
-  return s.charAt(0).toUpperCase() + s.slice(1)
-}
 
 const inputCls =
   'h-10 w-full rounded-btn border border-line-2 bg-paper-0 px-3 text-row text-ink-1 hover:border-line-3 focus:border-accent'
@@ -478,6 +467,7 @@ function CumStamAzi({
 }) {
   const cfg = data.tracker.config
   const sum = summarize(cfg, data.segments, alloc)
+  const grid = useMemo(() => workGrid(cfg, data.segments, data.entries, azi()), [cfg, data])
   const [view, setView] = useState('all')
   const [day, setDay] = useState('')
   const [seg, setSeg] = useState<(Segment & { id: string }) | null>(null)
@@ -505,16 +495,16 @@ function CumStamAzi({
         ))}
       </div>
 
-      <Card title="Progres pe etape" subtitle="Metri realizați din metrii de executat pentru fiecare etapă.">
+      <Card title="Progres pe lucrări" subtitle="Realizat din de executat, pe fiecare lucrare. Sudurile nu au o cantitate de executat.">
         <div className="space-y-3">
-          {sum.byStage.map((g) => (
-            <div key={g.id} className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1 sm:grid-cols-[160px_minmax(0,1fr)_170px]">
-              <span className="text-row text-ink-1">{g.label}</span>
+          {grid.rows.map((g) => (
+            <div key={g.stage.id} className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1 sm:grid-cols-[160px_minmax(0,1fr)_170px]">
+              <span className="text-row text-ink-1">{g.stage.label}</span>
               <div className="col-span-2 row-start-2 h-2 rounded-full bg-track sm:col-span-1 sm:row-start-auto">
-                <div className="h-full rounded-full bg-pos-fill" style={{ width: `${Math.min(1, g.done / g.total) * 100}%` }} />
+                <div className="h-full rounded-full bg-pos-fill" style={{ width: `${Math.min(1, g.pct ?? 0) * 100}%` }} />
               </div>
               <span className="text-right text-row tabular-nums text-ink-3">
-                {num(g.done, 1)} / {m1(g.total)}
+                {g.total !== null ? `${qtyText(g.stage, g.done).replace(/ (m|buc)$/, '')} / ${qtyText(g.stage, g.total)}` : qtyText(g.stage, g.done)}
               </span>
             </div>
           ))}
@@ -601,174 +591,12 @@ function CumStamAzi({
   )
 }
 
-// ── Jurnal zilnic ────────────────────────────────────────────────────────
-
-function JurnalZilnic({
-  data,
-  alloc,
-  setData,
-}: {
-  data: TrackerData
-  alloc: Allocation
-  setData: (d: TrackerData) => void
-}) {
-  const cfg = data.tracker.config
-  const pts = boundaries(data.segments)
-  const [date, setDate] = useState(azi())
-  const [stage, setStage] = useState(cfg.stages[0]?.id ?? '')
-  const [from, setFrom] = useState(pts[0] ?? '')
-  const [to, setTo] = useState(pts[1] ?? '')
-  const [qty, setQty] = useState('')
-  const [note, setNote] = useState('')
-  const [busy, setBusy] = useState(false)
-
-  const segByCode = useMemo(() => new Map(data.segments.map((s) => [s.code, s])), [data.segments])
-  const indexOf = useMemo(() => new Map(data.entries.map((e, i) => [e.id, i])), [data.entries])
-
-  const byDay = useMemo(() => {
-    const m = new Map<string, EntryRow[]>()
-    for (const e of data.entries) {
-      const arr = m.get(e.work_date) ?? []
-      arr.push(e)
-      m.set(e.work_date, arr)
-    }
-    return [...m.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1))
-  }, [data.entries])
-
-  async function add() {
-    const q = toNum(qty)
-    if (!(q > 0)) return toast('Scrie câți metri s-au făcut.')
-    if (from === to) return toast('Alege două repere diferite.')
-    setBusy(true)
-    try {
-      const rows = await addEntries(data.tracker.id, [
-        { work_date: date, stage, from_pt: from, to_pt: to, qty: q, note: note.trim() || null },
-      ])
-      setData({ ...data, entries: [...data.entries, ...rows] })
-      setQty('')
-      setNote('')
-      toast('Adăugat în jurnal', 'success')
-    } catch (e) {
-      toast(`Nu s-a salvat: ${e instanceof Error ? e.message : e}`)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function remove(e: EntryRow) {
-    if (!window.confirm(`Ștergi rândul „${stageLabel(cfg, e.stage)} ${e.from_pt} → ${e.to_pt}, ${m1(e.qty)}"?`)) return
-    try {
-      await deleteEntry(e.id)
-      setData({ ...data, entries: data.entries.filter((x) => x.id !== e.id) })
-    } catch (err) {
-      toast(`Nu s-a șters: ${err instanceof Error ? err.message : err}`)
-    }
-  }
-
-  return (
-    <div className="space-y-5">
-      <Card
-        title="Adaugă o zi"
-        subtitle="Frontul pornește de la primul reper și merge spre al doilea. Metrii umplu porțiunile în ordine, de unde s-a rămas."
-      >
-        <div className="grid grid-cols-2 gap-2 md:grid-cols-[150px_minmax(0,1fr)_130px_140px_110px]">
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={`${inputCls} col-span-2 md:col-span-1`} aria-label="Data" />
-          <select value={stage} onChange={(e) => setStage(e.target.value)} className={`${inputCls} col-span-2 md:col-span-1`} aria-label="Etapa">
-            {cfg.stages.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.label}
-              </option>
-            ))}
-          </select>
-          <select value={from} onChange={(e) => setFrom(e.target.value)} className={inputCls} aria-label="De la">
-            {pts.map((p) => (
-              <option key={p} value={p}>
-                de la {p}
-              </option>
-            ))}
-          </select>
-          <select value={to} onChange={(e) => setTo(e.target.value)} className={inputCls} aria-label="Până la">
-            {pts.map((p) => (
-              <option key={p} value={p}>
-                până la {p}
-              </option>
-            ))}
-          </select>
-          <input inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="metri" className={`${inputCls} col-span-2 md:col-span-1`} aria-label="Metri" />
-        </div>
-        <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Notă (opțional), ex. a plouat, s-a lucrat doar dimineața" className={`${inputCls} mt-2`} aria-label="Notă" />
-        <div className="mt-3">
-          <PrimaryButton onClick={() => void add()} disabled={busy}>
-            Adaugă în jurnal
-          </PrimaryButton>
-        </div>
-      </Card>
-
-      {byDay.length === 0 ? (
-        <Card>
-          <EmptyState title="Jurnalul e gol">Adaugă prima zi de lucru mai sus.</EmptyState>
-        </Card>
-      ) : (
-        byDay.map(([d, rows]) => {
-          const tot = new Map<string, number>()
-          for (const r of rows) tot.set(r.stage, (tot.get(r.stage) ?? 0) + r.qty)
-          return (
-            <Card key={d} title={ziLunga(d)}>
-              <div className="-mt-1 mb-3 flex flex-wrap gap-1.5">
-                {[...tot.entries()].map(([s, q]) => (
-                  <Pill key={s} tone="neutral">
-                    {stageLabel(cfg, s)} {m1(q)}
-                  </Pill>
-                ))}
-              </div>
-              <ul className="divide-y divide-line-1">
-                {rows.map((e) => {
-                  const idx = indexOf.get(e.id)!
-                  const parts = alloc.allocs.filter((a) => a.entryIndex === idx)
-                  const lost = alloc.unplaced.get(idx) ?? 0
-                  return (
-                    <li key={e.id} className="flex items-start justify-between gap-3 py-2.5">
-                      <div className="min-w-0">
-                        <p className="text-row text-ink-1">
-                          <span className="font-semibold">{stageLabel(cfg, e.stage)}</span> · {e.from_pt} → {e.to_pt} ·{' '}
-                          <span className="tabular-nums">{m1(e.qty)}</span>
-                        </p>
-                        {parts.length > 0 && (
-                          <p className="mt-0.5 text-sub text-ink-3">
-                            {parts.map((a) => `${segmentLabel(segByCode.get(a.segCode)!)} ${m1(a.qty)}`).join(' · ')}
-                          </p>
-                        )}
-                        {lost > 0.05 && (
-                          <p className="mt-0.5 text-sub text-warn">
-                            {m1(lost)} nu încap în porțiunile dintre {e.from_pt} și {e.to_pt} (sunt deja gata sau etapa nu se face acolo)
-                          </p>
-                        )}
-                        {e.note && <p className="mt-0.5 text-sub text-ink-2">{e.note}</p>}
-                      </div>
-                      <button
-                        onClick={() => void remove(e)}
-                        className="shrink-0 rounded-btn px-2 py-1 text-sub font-semibold text-ink-3 hover:text-neg"
-                        aria-label="Șterge rândul"
-                      >
-                        Șterge
-                      </button>
-                    </li>
-                  )
-                })}
-              </ul>
-            </Card>
-          )
-        })
-      )}
-    </div>
-  )
-}
-
 // ── Fila ─────────────────────────────────────────────────────────────────
 
 export function TrackerProiect({ trackerId }: { trackerId: string }) {
   const { data, error, reload, setData } = useTracker(trackerId)
-  const [tab, setTab] = useState<'azi' | 'jurnal'>('azi')
+  const [tab, setTab] = useState<'azi' | 'zile' | 'jurnal' | 'portiuni'>('azi')
+  const [seg, setSeg] = useState<(Segment & { id: string }) | null>(null)
   const alloc = useMemo(
     () => (data ? allocate(data.tracker.config, data.segments, data.entries) : null),
     [data]
@@ -784,19 +612,31 @@ export function TrackerProiect({ trackerId }: { trackerId: string }) {
           {data.tracker.subtitle && <p className="text-sub font-semibold text-ink-3">{data.tracker.subtitle}</p>}
           <h2 className="text-card font-semibold text-ink-1">{data.tracker.name}</h2>
         </div>
-        <SegmentedControl
-          value={tab}
-          onChange={setTab}
-          options={[
-            { value: 'azi', label: 'Cum stăm azi' },
-            { value: 'jurnal', label: 'Jurnal zilnic' },
-          ]}
-        />
+        <div className="max-w-full overflow-x-auto">
+          <SegmentedControl
+            value={tab}
+            onChange={setTab}
+            options={[
+              { value: 'azi', label: 'Cum stăm azi' },
+              { value: 'zile', label: 'Pe zile' },
+              { value: 'jurnal', label: 'Jurnal' },
+              { value: 'portiuni', label: 'Pe porțiuni' },
+            ]}
+          />
+        </div>
       </div>
-      {tab === 'azi' ? (
-        <CumStamAzi data={data} alloc={alloc} setData={setData} />
-      ) : (
-        <JurnalZilnic data={data} alloc={alloc} setData={setData} />
+      {tab === 'azi' && <CumStamAzi data={data} alloc={alloc} setData={setData} />}
+      {tab === 'zile' && <PeZile data={data} alloc={alloc} />}
+      {tab === 'jurnal' && <Jurnal data={data} alloc={alloc} setData={setData} />}
+      {tab === 'portiuni' && <PePortiuni data={data} alloc={alloc} onOpenSegment={setSeg} />}
+      {seg && (
+        <SegmentPanel
+          data={data}
+          alloc={alloc}
+          seg={seg}
+          onClose={() => setSeg(null)}
+          onAdded={(rows) => setData({ ...data, entries: [...data.entries, ...rows] })}
+        />
       )}
     </div>
   )

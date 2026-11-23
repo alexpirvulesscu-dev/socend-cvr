@@ -63,6 +63,7 @@ Single-page React app → Supabase (Postgres + Auth + RLS). Shared skeleton tabl
 - [x] Migrare `0028_seed_tracker_pestisani` + `src/domain/tracker.ts` cu teste (împărțirea metrilor pe porțiuni, pornirea din pagina Peștișani) · `b7ab937`
 - [x] Ecranul Clienți: 3 clienți, apoi proiectele fiecăruia (screenshot `/qa/08-*.png`) · `31d1d20`
 - [x] Fila Tracker: „Cum stăm azi" (hartă, etape, cămine) și „Jurnal zilnic" (zi cu zi, de la VJ la VJ); adăugare și ștergere verificate cap-coadă (screenshot `/qa/09-*.png`, `/qa/10-*.png`) · `31d1d20`
+- [x] Jurnalul refăcut ca Excelul: Pe zile, Jurnal, Pe porțiuni (migrarea `0029_cvr_tracker_excel`; screenshot `/qa/10-*.png`, `/qa/11-*.png`, `/qa/12-*.png`)
 - [ ] Faza 2: situații de lucrări și situații de plată din tracker, pentru Socend și pentru subcontractori (pe proiect: cu sau fără subcontractor)
 
 ## External Services

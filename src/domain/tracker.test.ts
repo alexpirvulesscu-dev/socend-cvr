@@ -8,6 +8,8 @@ import {
   segmentState,
   stageState,
   summarize,
+  sectionTable,
+  workGrid,
   type Entry,
   type Segment,
   type TrackerConfig,
@@ -21,7 +23,7 @@ const mini: Segment[] = [
   { code: 'b', from_pt: 'VJ2', to_pt: 'VJ3', part: 0, parts: 1, length_m: 20, kind: 'verde', sort_order: 2 },
   { code: 'c', from_pt: 'VJ3', to_pt: 'VJ4', part: 0, parts: 1, length_m: 30, kind: 'verde', sort_order: 3 },
 ]
-const e = (d: string, from: string, to: string, qty: number, stage = 'sapat'): Entry => ({
+const e = (d: string, from: string | null, to: string | null, qty: number, stage = 'sapat'): Entry => ({
   work_date: d,
   stage,
   from_pt: from,
@@ -75,11 +77,23 @@ describe('tracker: împărțirea metrilor pe porțiuni', () => {
     expect(a.unplaced.get(0)).toBe(5)
   })
 
-  it('etapa se aplică doar porțiunilor care o au (consolele nu se sapă)', () => {
-    // VJ39-VJ40 = 10,3 m suport + 16 m console; „console montate" există doar pe console
-    const a = allocate(cfg, segs, [e('2026-10-01', 'VJ39', 'VJ40', 16, 'console')])
-    expect(a.filled.get('s39b')!.get('console')).toBe(16)
-    expect(a.filled.get('s39a')!.get('console') ?? 0).toBe(0)
+  it('lucrările în bucăți (suduri, console) nu se pun pe hartă', () => {
+    const a = allocate(cfg, segs, [e('2026-10-01', 'VJ36', 'VJ49', 3, 'sudura')])
+    expect(a.allocs.length).toBe(0)
+    expect(a.unplaced.size).toBe(0)
+  })
+
+  it('rândurile fără VJ nu se pun pe hartă și nu dau avertisment', () => {
+    const a = allocate(cfg, mini, [{ ...e('2026-10-01', 'VJ1', 'VJ2', 5), from_pt: null, to_pt: null }])
+    expect(a.allocs.length).toBe(0)
+    expect(a.unplaced.size).toBe(0)
+  })
+
+  it('țeava pe console umple și suportul, și consolele din interval', () => {
+    // VJ39-VJ40 = 10,3 m suport + 16 m console
+    const a = allocate(cfg, segs, [e('2026-10-01', 'VJ39', 'VJ40', 20, 'teava_console')])
+    expect(a.filled.get('s39a')!.get('teava_console')).toBeCloseTo(10.3, 5)
+    expect(a.filled.get('s39b')!.get('teava_console')).toBeCloseTo(9.7, 5)
   })
 
   it('stările: gata, în lucru, neînceput', () => {
@@ -89,26 +103,53 @@ describe('tracker: împărțirea metrilor pe porțiuni', () => {
   })
 })
 
-describe('tracker: pornirea Peștișani din pagina veche', () => {
-  const a = allocate(cfg, segs, fx.entries as Entry[])
+describe('tracker: pe zile și pe porțiuni (ca în Excel)', () => {
+  const entries: Entry[] = [
+    { ...e('2026-10-13', 'VJ1', 'VJ1', 376.9), from_pt: null, to_pt: null, is_initial: true },
+    e('2026-10-15', 'VJ62', 'VJ63', 30),
+    e('2026-10-15', 'VJ62', 'VJ63', 5, 'sudura'),
+    { ...e('2026-10-16', 'x', 'x', 40), from_pt: null, to_pt: null },
+    e('2026-10-19', 'VJ65', 'VJ72', 40),
+    { ...e('2026-10-19', 'x', 'x', 1), stage: null, qty: null, from_pt: 'Cămin CVGA VJ194', to_pt: null },
+  ]
 
-  it('fiecare etapă bifată pe pagina veche iese „gata", restul „neînceput"', () => {
-    for (const s of segs) {
-      const exp = (fx.expected as Record<string, Record<string, string>>)[s.code]
-      for (const [stage, st] of Object.entries(exp)) {
-        expect(`${s.code}/${stage}=${stageState(s, a.filled.get(s.code)?.get(stage) ?? 0)}`).toBe(
-          `${s.code}/${stage}=${st}`
-        )
-      }
-    }
-    expect(a.unplaced.size).toBe(0)
+  it('rândul de săpătură: de executat, realizat, rămas, media pe zi lucrată, pe zile', () => {
+    const g = workGrid(cfg, segs, entries, '2026-10-20')
+    expect(g.days[0]).toBe('2026-10-15')
+    expect(g.days[g.days.length - 1]).toBe('2026-10-20')
+    const r = g.rows.find((x) => x.stage.id === 'sapat')!
+    expect(r.total).toBeCloseTo(971.2, 1)
+    expect(r.initial).toBeCloseTo(376.9, 5)
+    expect(r.done).toBeCloseTo(486.9, 5)
+    expect(r.left).toBeCloseTo(484.3, 1)
+    expect(r.perDayAvg).toBeCloseTo(110 / 3, 5)
+    expect(r.perDay.get('2026-10-19')).toBe(40)
+    expect(r.perDay.has('2026-10-13')).toBe(false)
   })
 
-  it('totalul traseului și porțiunile în lucru', () => {
-    const sum = summarize(cfg, segs, a)
+  it('țeava pe console are de executat suportul + consolele; sudurile n-au țintă', () => {
+    const g = workGrid(cfg, segs, entries, '2026-10-20')
+    expect(g.rows.find((x) => x.stage.id === 'teava_console')!.total).toBeCloseTo(276.8, 1)
+    const sud = g.rows.find((x) => x.stage.id === 'sudura')!
+    expect(sud.total).toBeNull()
+    expect(sud.done).toBe(5)
+  })
+
+  it('pe porțiuni: VJ65-VJ66 săpată pe 19.10, porțiunile împărțite se adună', () => {
+    const a = allocate(cfg, segs, entries)
+    const t = sectionTable(cfg, segs, entries, a)
+    expect(t.length).toBe(44)
+    const r = t.find((x) => x.from === 'VJ65')!
+    expect(r.byStage.get('sapat')!.done).toBeCloseTo(27.8, 5)
+    expect(r.daysWorked).toBe(1)
+    expect(r.lastDay).toBe('2026-10-19')
+    const split = t.find((x) => x.from === 'VJ38')!
+    expect(split.length).toBeCloseTo(29.2, 5)
+  })
+
+  it('totalul traseului rămâne 1.248 m', () => {
+    const sum = summarize(cfg, segs, allocate(cfg, segs, entries))
     expect(sum.total).toBeCloseTo(1248, 1)
-    expect(sum.byState.ns + sum.byState.ip + sum.byState.done).toBeCloseTo(sum.total, 5)
-    // consolele VJ39-VJ46 sunt complet gata pe pagina veche
-    expect(segmentState(cfg, segs.find((s) => s.code === 's40')!, a)).toBe('done')
+    expect(segmentState(cfg, segs.find((s) => s.code === 's65')!, allocate(cfg, segs, entries))).toBe('ip')
   })
 })

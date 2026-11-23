@@ -22,10 +22,21 @@ export interface TrackerType {
   color: string
 }
 
+export interface TrackerStage {
+  id: string
+  label: string
+  /** „ml" se pune pe porțiuni (hartă); „buc" se numără doar pe zile */
+  unit?: string
+  group?: string
+  /** de executat, pentru lucrările în bucăți */
+  target?: number
+}
+
 export interface TrackerConfig {
   unit?: string
   types: TrackerType[]
-  stages: { id: string; label: string }[]
+  groups?: { id: string; label: string }[]
+  stages: TrackerStage[]
   stagesByType: Record<string, string[]>
 }
 
@@ -45,12 +56,17 @@ export interface Segment {
 export interface Entry {
   id?: string
   work_date: string
-  stage: string
-  from_pt: string
-  to_pt: string
-  qty: number
+  /** gol = rând doar cu observații */
+  stage: string | null
+  /** gol = fără reper (ex. Mihai nu știe VJ-ul) sau o lucrare separată */
+  from_pt: string | null
+  to_pt: string | null
+  qty: number | null
   note?: string | null
   created_at?: string
+  batch_id?: string | null
+  /** „realizat înainte de jurnal" — intră în total, nu într-o zi */
+  is_initial?: boolean
 }
 
 export interface Alloc {
@@ -85,6 +101,11 @@ export function stagesFor(cfg: TrackerConfig, kind: string): string[] {
   return cfg.stagesByType[kind] ?? []
 }
 
+/** Lucrarea se pune pe porțiunile hărții (are lungime). */
+export function isSpatial(cfg: TrackerConfig, stage: string | null): boolean {
+  return !!stage && Object.values(cfg.stagesByType).some((l) => l.includes(stage))
+}
+
 /** Ordinea în care se iau rândurile: pe zile, apoi cum au fost introduse. */
 function entryOrder(entries: Entry[]): number[] {
   return entries
@@ -101,7 +122,8 @@ function entryOrder(entries: Entry[]): number[] {
 }
 
 /** Porțiunile dintre două repere, în sensul de mers al frontului. */
-export function segmentsInRange(segments: Segment[], from: string, to: string): Segment[] {
+export function segmentsInRange(segments: Segment[], from: string | null, to: string | null): Segment[] {
+  if (!from || !to) return []
   const pts = boundaries(segments)
   const i = pts.indexOf(from)
   const j = pts.indexOf(to)
@@ -122,18 +144,21 @@ export function allocate(cfg: TrackerConfig, segments: Segment[], entries: Entry
 
   for (const idx of entryOrder(entries)) {
     const e = entries[idx]
+    // doar lucrările cu lungime, cu ambele repere, se pun pe hartă
+    if (!e.stage || !e.qty || !e.from_pt || !e.to_pt || !isSpatial(cfg, e.stage)) continue
+    const stage = e.stage
     let left = Number(e.qty)
     const range = segmentsInRange(segments, e.from_pt, e.to_pt).filter((s) =>
-      stagesFor(cfg, s.kind).includes(e.stage)
+      stagesFor(cfg, s.kind).includes(stage)
     )
     for (const s of range) {
       if (left <= 0) break
       const m = filled.get(s.code)!
-      const have = m.get(e.stage) ?? 0
+      const have = m.get(stage) ?? 0
       const room = Number(s.length_m) - have
       if (room <= EPS) continue
       const take = Math.min(room, left)
-      m.set(e.stage, have + take)
+      m.set(stage, have + take)
       allocs.push({ entryIndex: idx, segCode: s.code, qty: take })
       left -= take
     }
@@ -196,7 +221,7 @@ export function segmentHistory(
 ): { date: string; stage: string; qty: number }[] {
   return a.allocs
     .filter((x) => x.segCode === segCode)
-    .map((x) => ({ date: entries[x.entryIndex].work_date, stage: entries[x.entryIndex].stage, qty: x.qty }))
+    .map((x) => ({ date: entries[x.entryIndex].work_date, stage: entries[x.entryIndex].stage ?? '', qty: x.qty }))
     .sort((x, y) => (x.date < y.date ? 1 : x.date > y.date ? -1 : 0))
 }
 
@@ -205,7 +230,7 @@ export function dayTouches(entries: Entry[], a: Allocation, date: string): Map<s
   const out = new Map<string, string[]>()
   for (const x of a.allocs) {
     const e = entries[x.entryIndex]
-    if (e.work_date !== date) continue
+    if (e.work_date !== date || !e.stage) continue
     const list = out.get(x.segCode) ?? []
     if (!list.includes(e.stage)) list.push(e.stage)
     out.set(x.segCode, list)
@@ -217,4 +242,119 @@ export function dayTouches(entries: Entry[], a: Allocation, date: string): Map<s
 export function segmentLabel(s: Segment): string {
   const base = `${s.from_pt}-${s.to_pt}`
   return s.parts > 1 ? `${base} (${s.part + 1}/${s.parts})` : base
+}
+
+// ── Pe zile (foaia „Tracker" din Excel) ─────────────────────────────────
+
+export interface GridRow {
+  stage: TrackerStage
+  /** de executat: lungimea porțiunilor care au lucrarea, sau ținta în bucăți */
+  total: number | null
+  /** realizat înainte de jurnal */
+  initial: number
+  done: number
+  pct: number | null
+  left: number | null
+  /** media pe zilele în care s-a lucrat la ea (fără „înainte de jurnal") */
+  perDayAvg: number | null
+  daysWorked: number
+  perDay: Map<string, number>
+}
+
+/** Toate zilele din calendar, de la `from` la `to` inclusiv. */
+export function dayRange(from: string, to: string): string[] {
+  const out: string[] = []
+  const d = new Date(from + 'T00:00:00Z')
+  const end = new Date(to + 'T00:00:00Z')
+  while (d <= end && out.length < 1000) {
+    out.push(d.toISOString().slice(0, 10))
+    d.setUTCDate(d.getUTCDate() + 1)
+  }
+  return out
+}
+
+export function workGrid(
+  cfg: TrackerConfig,
+  segments: Segment[],
+  entries: Entry[],
+  today: string
+): { days: string[]; rows: GridRow[] } {
+  const dated = entries.filter((e) => !e.is_initial)
+  const first = dated.reduce<string | null>((m, e) => (m === null || e.work_date < m ? e.work_date : m), null)
+  const last = dated.reduce((m, e) => (e.work_date > m ? e.work_date : m), today)
+  const days = first ? dayRange(first, last > today ? last : today) : []
+
+  const rows = cfg.stages.map((st) => {
+    const spatial = isSpatial(cfg, st.id)
+    const total = spatial
+      ? segments.filter((s) => stagesFor(cfg, s.kind).includes(st.id)).reduce((a, s) => a + Number(s.length_m), 0)
+      : (st.target ?? null)
+    let initial = 0
+    const perDay = new Map<string, number>()
+    for (const e of entries) {
+      if (e.stage !== st.id || !e.qty) continue
+      if (e.is_initial) initial += Number(e.qty)
+      else perDay.set(e.work_date, (perDay.get(e.work_date) ?? 0) + Number(e.qty))
+    }
+    const logged = [...perDay.values()].reduce((a, b) => a + b, 0)
+    const done = initial + logged
+    return {
+      stage: st,
+      total,
+      initial,
+      done,
+      pct: total ? done / total : null,
+      left: total !== null ? total - done : null,
+      perDayAvg: perDay.size > 0 ? logged / perDay.size : null,
+      daysWorked: perDay.size,
+      perDay,
+    }
+  })
+  return { days, rows }
+}
+
+// ── Pe porțiuni (foaia „Pe secțiuni" din Excel) ─────────────────────────
+
+export interface SectionRow {
+  from: string
+  to: string
+  parts: Segment[]
+  length: number
+  /** pe lucrare: metri de executat pe porțiune și metri realizați */
+  byStage: Map<string, { total: number; done: number }>
+  daysWorked: number
+  lastDay: string | null
+}
+
+export function sectionTable(
+  cfg: TrackerConfig,
+  segments: Segment[],
+  entries: Entry[],
+  a: Allocation
+): SectionRow[] {
+  const out: SectionRow[] = []
+  for (const s of [...segments].sort((x, y) => x.sort_order - y.sort_order)) {
+    let row = out[out.length - 1]
+    if (!row || row.from !== s.from_pt) {
+      row = { from: s.from_pt, to: s.to_pt, parts: [], length: 0, byStage: new Map(), daysWorked: 0, lastDay: null }
+      out.push(row)
+    }
+    row.parts.push(s)
+    row.length += Number(s.length_m)
+    for (const k of stagesFor(cfg, s.kind)) {
+      const g = row.byStage.get(k) ?? { total: 0, done: 0 }
+      g.total += Number(s.length_m)
+      g.done += a.filled.get(s.code)?.get(k) ?? 0
+      row.byStage.set(k, g)
+    }
+  }
+  for (const row of out) {
+    const codes = new Set(row.parts.map((p) => p.code))
+    const dates = new Set(
+      a.allocs.filter((x) => codes.has(x.segCode) && !entries[x.entryIndex].is_initial).map((x) => entries[x.entryIndex].work_date)
+    )
+    row.daysWorked = dates.size
+    row.lastDay = dates.size ? [...dates].sort().reverse()[0] : null
+  }
+  return out
 }

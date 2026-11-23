@@ -29,7 +29,12 @@ export interface EntryRow extends Entry {
   id: string
   note: string | null
   created_at: string
+  batch_id: string | null
+  is_initial: boolean
 }
+
+const ENTRY_COLS = 'id, work_date, stage, from_pt, to_pt, qty, note, created_at, batch_id, is_initial'
+const toEntry = (x: EntryRow): EntryRow => ({ ...x, qty: x.qty === null ? null : Number(x.qty) })
 
 export interface TrackerData {
   tracker: TrackerRow
@@ -71,7 +76,7 @@ async function fetchTracker(id: string): Promise<TrackerData> {
       .order('sort_order'),
     supabase
       .from('cvr_tracker_entries')
-      .select('id, work_date, stage, from_pt, to_pt, qty, note, created_at')
+      .select(ENTRY_COLS)
       .eq('tracker_id', id)
       .order('work_date')
       .order('created_at')
@@ -82,7 +87,7 @@ async function fetchTracker(id: string): Promise<TrackerData> {
     tracker: t.data as TrackerRow,
     segments: ((s.data ?? []) as (Segment & { id: string })[]).map((x) => ({ ...x, length_m: Number(x.length_m) })),
     points: (p.data ?? []) as PointRow[],
-    entries: ((e.data ?? []) as EntryRow[]).map((x) => ({ ...x, qty: Number(x.qty) })),
+    entries: ((e.data ?? []) as EntryRow[]).map(toEntry),
   }
 }
 
@@ -108,24 +113,25 @@ export function useTracker(id: string) {
 
 export interface NewEntry {
   work_date: string
-  stage: string
-  from_pt: string
-  to_pt: string
-  qty: number
+  stage: string | null
+  from_pt: string | null
+  to_pt: string | null
+  qty: number | null
   note: string | null
+  batch_id?: string | null
 }
 
 export async function addEntries(trackerId: string, rows: NewEntry[]): Promise<EntryRow[]> {
   const { data, error } = await supabase
     .from('cvr_tracker_entries')
     .insert(rows.map((r) => ({ ...r, tracker_id: trackerId })))
-    .select('id, work_date, stage, from_pt, to_pt, qty, note, created_at')
+    .select(ENTRY_COLS)
   if (error) throw error
-  return ((data ?? []) as EntryRow[]).map((x) => ({ ...x, qty: Number(x.qty) }))
+  return ((data ?? []) as EntryRow[]).map(toEntry)
 }
 
-export async function deleteEntry(id: string): Promise<void> {
-  const { error } = await supabase.from('cvr_tracker_entries').delete().eq('id', id)
+export async function deleteEntries(ids: string[]): Promise<void> {
+  const { error } = await supabase.from('cvr_tracker_entries').delete().in('id', ids)
   if (error) throw error
 }
 
