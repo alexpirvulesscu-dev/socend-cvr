@@ -1,0 +1,1659 @@
+{
+ "config": {
+  "unit": "m",
+  "types": [
+   {
+    "id": "verde",
+    "label": "Săpătură în spațiu verde",
+    "short": "spațiu verde",
+    "color": "#2E9E6B"
+   },
+   {
+    "id": "acost",
+    "label": "Săpătură în acostament (1,4 m)",
+    "short": "acostament",
+    "color": "#B0765C"
+   },
+   {
+    "id": "console",
+    "label": "Țeavă pe console metalice",
+    "short": "console",
+    "color": "#47698F"
+   },
+   {
+    "id": "suport",
+    "label": "Suport metalic pe fundații beton",
+    "short": "fundații + suport",
+    "color": "#5FA8A0"
+   }
+  ],
+  "stages": [
+   {
+    "id": "sapat",
+    "label": "Săpătură"
+   },
+   {
+    "id": "sudura",
+    "label": "Sudură"
+   },
+   {
+    "id": "teava",
+    "label": "Țeavă montată"
+   },
+   {
+    "id": "nisip",
+    "label": "Nisip"
+   },
+   {
+    "id": "pamant",
+    "label": "Umplutură pământ"
+   },
+   {
+    "id": "refacere",
+    "label": "Refacere (la gata)"
+   },
+   {
+    "id": "console",
+    "label": "Console montate"
+   },
+   {
+    "id": "fundatii",
+    "label": "Fundații turnate"
+   },
+   {
+    "id": "suport",
+    "label": "Suport metalic montat"
+   }
+  ],
+  "stagesByType": {
+   "console": [
+    "console",
+    "sudura",
+    "teava"
+   ],
+   "suport": [
+    "fundatii",
+    "suport",
+    "sudura",
+    "teava"
+   ],
+   "verde": [
+    "sapat",
+    "sudura",
+    "teava",
+    "nisip",
+    "pamant",
+    "refacere"
+   ],
+   "acost": [
+    "sapat",
+    "sudura",
+    "teava",
+    "nisip",
+    "pamant",
+    "refacere"
+   ]
+  }
+ },
+ "segments": [
+  {
+   "code": "s36",
+   "from_pt": "VJ36",
+   "to_pt": "VJ37",
+   "part": 0,
+   "parts": 1,
+   "length_m": 18.4,
+   "kind": "verde",
+   "sort_order": 1
+  },
+  {
+   "code": "s37",
+   "from_pt": "VJ37",
+   "to_pt": "VJ38",
+   "part": 0,
+   "parts": 1,
+   "length_m": 18.0,
+   "kind": "verde",
+   "sort_order": 2
+  },
+  {
+   "code": "s38a",
+   "from_pt": "VJ38",
+   "to_pt": "VJ39",
+   "part": 0,
+   "parts": 2,
+   "length_m": 13.5,
+   "kind": "verde",
+   "sort_order": 3
+  },
+  {
+   "code": "s38b",
+   "from_pt": "VJ38",
+   "to_pt": "VJ39",
+   "part": 1,
+   "parts": 2,
+   "length_m": 15.7,
+   "kind": "suport",
+   "sort_order": 4
+  },
+  {
+   "code": "s39a",
+   "from_pt": "VJ39",
+   "to_pt": "VJ40",
+   "part": 0,
+   "parts": 2,
+   "length_m": 10.3,
+   "kind": "suport",
+   "sort_order": 5
+  },
+  {
+   "code": "s39b",
+   "from_pt": "VJ39",
+   "to_pt": "VJ40",
+   "part": 1,
+   "parts": 2,
+   "length_m": 16.0,
+   "kind": "console",
+   "sort_order": 6
+  },
+  {
+   "code": "s40",
+   "from_pt": "VJ40",
+   "to_pt": "VJ41",
+   "part": 0,
+   "parts": 1,
+   "length_m": 26.7,
+   "kind": "console",
+   "sort_order": 7
+  },
+  {
+   "code": "s41",
+   "from_pt": "VJ41",
+   "to_pt": "VJ42",
+   "part": 0,
+   "parts": 1,
+   "length_m": 40.7,
+   "kind": "console",
+   "sort_order": 8
+  },
+  {
+   "code": "s42",
+   "from_pt": "VJ42",
+   "to_pt": "VJ43",
+   "part": 0,
+   "parts": 1,
+   "length_m": 34.1,
+   "kind": "console",
+   "sort_order": 9
+  },
+  {
+   "code": "s43",
+   "from_pt": "VJ43",
+   "to_pt": "VJ44",
+   "part": 0,
+   "parts": 1,
+   "length_m": 21.7,
+   "kind": "console",
+   "sort_order": 10
+  },
+  {
+   "code": "s44",
+   "from_pt": "VJ44",
+   "to_pt": "VJ45",
+   "part": 0,
+   "parts": 1,
+   "length_m": 33.9,
+   "kind": "console",
+   "sort_order": 11
+  },
+  {
+   "code": "s45a",
+   "from_pt": "VJ45",
+   "to_pt": "VJ46",
+   "part": 0,
+   "parts": 2,
+   "length_m": 30.0,
+   "kind": "console",
+   "sort_order": 12
+  },
+  {
+   "code": "s45b",
+   "from_pt": "VJ45",
+   "to_pt": "VJ46",
+   "part": 1,
+   "parts": 2,
+   "length_m": 4.1,
+   "kind": "acost",
+   "sort_order": 13
+  },
+  {
+   "code": "s46",
+   "from_pt": "VJ46",
+   "to_pt": "VJ47",
+   "part": 0,
+   "parts": 1,
+   "length_m": 28.5,
+   "kind": "acost",
+   "sort_order": 14
+  },
+  {
+   "code": "s47",
+   "from_pt": "VJ47",
+   "to_pt": "VJ48",
+   "part": 0,
+   "parts": 1,
+   "length_m": 24.4,
+   "kind": "acost",
+   "sort_order": 15
+  },
+  {
+   "code": "s48",
+   "from_pt": "VJ48",
+   "to_pt": "VJ49",
+   "part": 0,
+   "parts": 1,
+   "length_m": 25.1,
+   "kind": "acost",
+   "sort_order": 16
+  },
+  {
+   "code": "s49",
+   "from_pt": "VJ49",
+   "to_pt": "VJ50",
+   "part": 0,
+   "parts": 1,
+   "length_m": 62.4,
+   "kind": "acost",
+   "sort_order": 17
+  },
+  {
+   "code": "s50",
+   "from_pt": "VJ50",
+   "to_pt": "VJ51",
+   "part": 0,
+   "parts": 1,
+   "length_m": 17.4,
+   "kind": "acost",
+   "sort_order": 18
+  },
+  {
+   "code": "s51",
+   "from_pt": "VJ51",
+   "to_pt": "VJ52",
+   "part": 0,
+   "parts": 1,
+   "length_m": 32.4,
+   "kind": "acost",
+   "sort_order": 19
+  },
+  {
+   "code": "s52",
+   "from_pt": "VJ52",
+   "to_pt": "VJ53",
+   "part": 0,
+   "parts": 1,
+   "length_m": 20.6,
+   "kind": "acost",
+   "sort_order": 20
+  },
+  {
+   "code": "s53",
+   "from_pt": "VJ53",
+   "to_pt": "VJ54",
+   "part": 0,
+   "parts": 1,
+   "length_m": 32.5,
+   "kind": "acost",
+   "sort_order": 21
+  },
+  {
+   "code": "s54",
+   "from_pt": "VJ54",
+   "to_pt": "VJ55",
+   "part": 0,
+   "parts": 1,
+   "length_m": 17.8,
+   "kind": "acost",
+   "sort_order": 22
+  },
+  {
+   "code": "s55",
+   "from_pt": "VJ55",
+   "to_pt": "VJ56",
+   "part": 0,
+   "parts": 1,
+   "length_m": 34.3,
+   "kind": "acost",
+   "sort_order": 23
+  },
+  {
+   "code": "s56",
+   "from_pt": "VJ56",
+   "to_pt": "VJ57",
+   "part": 0,
+   "parts": 1,
+   "length_m": 11.0,
+   "kind": "acost",
+   "sort_order": 24
+  },
+  {
+   "code": "s57",
+   "from_pt": "VJ57",
+   "to_pt": "VJ58",
+   "part": 0,
+   "parts": 1,
+   "length_m": 29.2,
+   "kind": "acost",
+   "sort_order": 25
+  },
+  {
+   "code": "s58",
+   "from_pt": "VJ58",
+   "to_pt": "VJ59",
+   "part": 0,
+   "parts": 1,
+   "length_m": 76.3,
+   "kind": "acost",
+   "sort_order": 26
+  },
+  {
+   "code": "s59a",
+   "from_pt": "VJ59",
+   "to_pt": "VJ60",
+   "part": 0,
+   "parts": 2,
+   "length_m": 25.0,
+   "kind": "acost",
+   "sort_order": 27
+  },
+  {
+   "code": "s59b",
+   "from_pt": "VJ59",
+   "to_pt": "VJ60",
+   "part": 1,
+   "parts": 2,
+   "length_m": 6.2,
+   "kind": "verde",
+   "sort_order": 28
+  },
+  {
+   "code": "s60",
+   "from_pt": "VJ60",
+   "to_pt": "VJ61",
+   "part": 0,
+   "parts": 1,
+   "length_m": 4.0,
+   "kind": "verde",
+   "sort_order": 29
+  },
+  {
+   "code": "s61",
+   "from_pt": "VJ61",
+   "to_pt": "VJ62",
+   "part": 0,
+   "parts": 1,
+   "length_m": 22.3,
+   "kind": "verde",
+   "sort_order": 30
+  },
+  {
+   "code": "s62",
+   "from_pt": "VJ62",
+   "to_pt": "VJ63",
+   "part": 0,
+   "parts": 1,
+   "length_m": 23.9,
+   "kind": "verde",
+   "sort_order": 31
+  },
+  {
+   "code": "s63",
+   "from_pt": "VJ63",
+   "to_pt": "VJ64",
+   "part": 0,
+   "parts": 1,
+   "length_m": 47.0,
+   "kind": "verde",
+   "sort_order": 32
+  },
+  {
+   "code": "s64",
+   "from_pt": "VJ64",
+   "to_pt": "VJ65",
+   "part": 0,
+   "parts": 1,
+   "length_m": 15.3,
+   "kind": "verde",
+   "sort_order": 33
+  },
+  {
+   "code": "s65",
+   "from_pt": "VJ65",
+   "to_pt": "VJ66",
+   "part": 0,
+   "parts": 1,
+   "length_m": 27.8,
+   "kind": "verde",
+   "sort_order": 34
+  },
+  {
+   "code": "s66",
+   "from_pt": "VJ66",
+   "to_pt": "VJ67",
+   "part": 0,
+   "parts": 1,
+   "length_m": 45.1,
+   "kind": "verde",
+   "sort_order": 35
+  },
+  {
+   "code": "s67",
+   "from_pt": "VJ67",
+   "to_pt": "VJ68",
+   "part": 0,
+   "parts": 1,
+   "length_m": 18.3,
+   "kind": "verde",
+   "sort_order": 36
+  },
+  {
+   "code": "s68",
+   "from_pt": "VJ68",
+   "to_pt": "VJ69",
+   "part": 0,
+   "parts": 1,
+   "length_m": 14.1,
+   "kind": "verde",
+   "sort_order": 37
+  },
+  {
+   "code": "s69",
+   "from_pt": "VJ69",
+   "to_pt": "VJ70",
+   "part": 0,
+   "parts": 1,
+   "length_m": 42.8,
+   "kind": "verde",
+   "sort_order": 38
+  },
+  {
+   "code": "s70",
+   "from_pt": "VJ70",
+   "to_pt": "VJ71",
+   "part": 0,
+   "parts": 1,
+   "length_m": 62.5,
+   "kind": "verde",
+   "sort_order": 39
+  },
+  {
+   "code": "s71",
+   "from_pt": "VJ71",
+   "to_pt": "VJ72",
+   "part": 0,
+   "parts": 1,
+   "length_m": 25.7,
+   "kind": "verde",
+   "sort_order": 40
+  },
+  {
+   "code": "s72",
+   "from_pt": "VJ72",
+   "to_pt": "VJ73",
+   "part": 0,
+   "parts": 1,
+   "length_m": 20.6,
+   "kind": "verde",
+   "sort_order": 41
+  },
+  {
+   "code": "s73",
+   "from_pt": "VJ73",
+   "to_pt": "VJ74",
+   "part": 0,
+   "parts": 1,
+   "length_m": 27.7,
+   "kind": "console",
+   "sort_order": 42
+  },
+  {
+   "code": "s74a",
+   "from_pt": "VJ74",
+   "to_pt": "VJ75",
+   "part": 0,
+   "parts": 2,
+   "length_m": 20.0,
+   "kind": "console",
+   "sort_order": 43
+  },
+  {
+   "code": "s74b",
+   "from_pt": "VJ74",
+   "to_pt": "VJ75",
+   "part": 1,
+   "parts": 2,
+   "length_m": 16.6,
+   "kind": "verde",
+   "sort_order": 44
+  },
+  {
+   "code": "s75",
+   "from_pt": "VJ75",
+   "to_pt": "VJ76",
+   "part": 0,
+   "parts": 1,
+   "length_m": 16.5,
+   "kind": "verde",
+   "sort_order": 45
+  },
+  {
+   "code": "s76",
+   "from_pt": "VJ76",
+   "to_pt": "VJ77",
+   "part": 0,
+   "parts": 1,
+   "length_m": 15.8,
+   "kind": "verde",
+   "sort_order": 46
+  },
+  {
+   "code": "s77",
+   "from_pt": "VJ77",
+   "to_pt": "VJ78",
+   "part": 0,
+   "parts": 1,
+   "length_m": 13.3,
+   "kind": "verde",
+   "sort_order": 47
+  },
+  {
+   "code": "s78",
+   "from_pt": "VJ78",
+   "to_pt": "VJ79",
+   "part": 0,
+   "parts": 1,
+   "length_m": 11.2,
+   "kind": "verde",
+   "sort_order": 48
+  },
+  {
+   "code": "s79",
+   "from_pt": "VJ79",
+   "to_pt": "VJ80",
+   "part": 0,
+   "parts": 1,
+   "length_m": 31.3,
+   "kind": "verde",
+   "sort_order": 49
+  }
+ ],
+ "entries": [
+  {
+   "work_date": "2026-10-13",
+   "stage": "sapat",
+   "from_pt": "VJ64",
+   "to_pt": "VJ65",
+   "qty": 15.3,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "sapat",
+   "from_pt": "VJ62",
+   "to_pt": "VJ63",
+   "qty": 23.9,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "sapat",
+   "from_pt": "VJ63",
+   "to_pt": "VJ64",
+   "qty": 47.0,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "sapat",
+   "from_pt": "VJ65",
+   "to_pt": "VJ66",
+   "qty": 27.8,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "sudura",
+   "from_pt": "VJ65",
+   "to_pt": "VJ66",
+   "qty": 27.8,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "sapat",
+   "from_pt": "VJ66",
+   "to_pt": "VJ67",
+   "qty": 45.1,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "sudura",
+   "from_pt": "VJ66",
+   "to_pt": "VJ67",
+   "qty": 45.1,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "sapat",
+   "from_pt": "VJ67",
+   "to_pt": "VJ68",
+   "qty": 18.3,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "sudura",
+   "from_pt": "VJ67",
+   "to_pt": "VJ68",
+   "qty": 18.3,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "sapat",
+   "from_pt": "VJ68",
+   "to_pt": "VJ69",
+   "qty": 14.1,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "sudura",
+   "from_pt": "VJ68",
+   "to_pt": "VJ69",
+   "qty": 14.1,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "sapat",
+   "from_pt": "VJ69",
+   "to_pt": "VJ70",
+   "qty": 42.8,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "sudura",
+   "from_pt": "VJ69",
+   "to_pt": "VJ70",
+   "qty": 42.8,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "teava",
+   "from_pt": "VJ69",
+   "to_pt": "VJ70",
+   "qty": 42.8,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "sapat",
+   "from_pt": "VJ70",
+   "to_pt": "VJ71",
+   "qty": 62.5,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "sudura",
+   "from_pt": "VJ70",
+   "to_pt": "VJ71",
+   "qty": 62.5,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "teava",
+   "from_pt": "VJ70",
+   "to_pt": "VJ71",
+   "qty": 62.5,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "sapat",
+   "from_pt": "VJ71",
+   "to_pt": "VJ72",
+   "qty": 25.7,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "sudura",
+   "from_pt": "VJ71",
+   "to_pt": "VJ72",
+   "qty": 25.7,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "teava",
+   "from_pt": "VJ71",
+   "to_pt": "VJ72",
+   "qty": 25.7,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "nisip",
+   "from_pt": "VJ72",
+   "to_pt": "VJ73",
+   "qty": 20.6,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "pamant",
+   "from_pt": "VJ72",
+   "to_pt": "VJ73",
+   "qty": 20.6,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "sapat",
+   "from_pt": "VJ72",
+   "to_pt": "VJ73",
+   "qty": 20.6,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "sudura",
+   "from_pt": "VJ72",
+   "to_pt": "VJ73",
+   "qty": 20.6,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "teava",
+   "from_pt": "VJ72",
+   "to_pt": "VJ73",
+   "qty": 20.6,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "console",
+   "from_pt": "VJ73",
+   "to_pt": "VJ74",
+   "qty": 27.7,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "sudura",
+   "from_pt": "VJ73",
+   "to_pt": "VJ74",
+   "qty": 27.7,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "teava",
+   "from_pt": "VJ73",
+   "to_pt": "VJ74",
+   "qty": 27.7,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "console",
+   "from_pt": "VJ74",
+   "to_pt": "VJ75",
+   "qty": 20.0,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "nisip",
+   "from_pt": "VJ74",
+   "to_pt": "VJ75",
+   "qty": 16.6,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "pamant",
+   "from_pt": "VJ74",
+   "to_pt": "VJ75",
+   "qty": 16.6,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "sapat",
+   "from_pt": "VJ74",
+   "to_pt": "VJ75",
+   "qty": 16.6,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "sudura",
+   "from_pt": "VJ74",
+   "to_pt": "VJ75",
+   "qty": 36.6,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "teava",
+   "from_pt": "VJ74",
+   "to_pt": "VJ75",
+   "qty": 36.6,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "nisip",
+   "from_pt": "VJ75",
+   "to_pt": "VJ76",
+   "qty": 16.5,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "pamant",
+   "from_pt": "VJ75",
+   "to_pt": "VJ76",
+   "qty": 16.5,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "sapat",
+   "from_pt": "VJ75",
+   "to_pt": "VJ76",
+   "qty": 16.5,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "sudura",
+   "from_pt": "VJ75",
+   "to_pt": "VJ76",
+   "qty": 16.5,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "teava",
+   "from_pt": "VJ75",
+   "to_pt": "VJ76",
+   "qty": 16.5,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "nisip",
+   "from_pt": "VJ76",
+   "to_pt": "VJ77",
+   "qty": 15.8,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "pamant",
+   "from_pt": "VJ76",
+   "to_pt": "VJ77",
+   "qty": 15.8,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "sapat",
+   "from_pt": "VJ76",
+   "to_pt": "VJ77",
+   "qty": 15.8,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "sudura",
+   "from_pt": "VJ76",
+   "to_pt": "VJ77",
+   "qty": 15.8,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "teava",
+   "from_pt": "VJ76",
+   "to_pt": "VJ77",
+   "qty": 15.8,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "nisip",
+   "from_pt": "VJ77",
+   "to_pt": "VJ78",
+   "qty": 13.3,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "pamant",
+   "from_pt": "VJ77",
+   "to_pt": "VJ78",
+   "qty": 13.3,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "sapat",
+   "from_pt": "VJ77",
+   "to_pt": "VJ78",
+   "qty": 13.3,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "sudura",
+   "from_pt": "VJ77",
+   "to_pt": "VJ78",
+   "qty": 13.3,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "teava",
+   "from_pt": "VJ77",
+   "to_pt": "VJ78",
+   "qty": 13.3,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "nisip",
+   "from_pt": "VJ78",
+   "to_pt": "VJ79",
+   "qty": 11.2,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "pamant",
+   "from_pt": "VJ78",
+   "to_pt": "VJ79",
+   "qty": 11.2,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "sapat",
+   "from_pt": "VJ78",
+   "to_pt": "VJ79",
+   "qty": 11.2,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "sudura",
+   "from_pt": "VJ78",
+   "to_pt": "VJ79",
+   "qty": 11.2,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-19",
+   "stage": "teava",
+   "from_pt": "VJ78",
+   "to_pt": "VJ79",
+   "qty": 11.2,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-30",
+   "stage": "console",
+   "from_pt": "VJ39",
+   "to_pt": "VJ40",
+   "qty": 16.0,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-30",
+   "stage": "console",
+   "from_pt": "VJ40",
+   "to_pt": "VJ41",
+   "qty": 26.7,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-30",
+   "stage": "sudura",
+   "from_pt": "VJ40",
+   "to_pt": "VJ39",
+   "qty": 16.0,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-30",
+   "stage": "sudura",
+   "from_pt": "VJ40",
+   "to_pt": "VJ41",
+   "qty": 26.7,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-30",
+   "stage": "teava",
+   "from_pt": "VJ40",
+   "to_pt": "VJ39",
+   "qty": 16.0,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-30",
+   "stage": "teava",
+   "from_pt": "VJ40",
+   "to_pt": "VJ41",
+   "qty": 26.7,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-30",
+   "stage": "console",
+   "from_pt": "VJ41",
+   "to_pt": "VJ42",
+   "qty": 40.7,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-30",
+   "stage": "sudura",
+   "from_pt": "VJ41",
+   "to_pt": "VJ42",
+   "qty": 40.7,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-30",
+   "stage": "teava",
+   "from_pt": "VJ41",
+   "to_pt": "VJ42",
+   "qty": 40.7,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-30",
+   "stage": "console",
+   "from_pt": "VJ42",
+   "to_pt": "VJ43",
+   "qty": 34.1,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-30",
+   "stage": "sudura",
+   "from_pt": "VJ42",
+   "to_pt": "VJ43",
+   "qty": 34.1,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-30",
+   "stage": "teava",
+   "from_pt": "VJ42",
+   "to_pt": "VJ43",
+   "qty": 34.1,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-30",
+   "stage": "console",
+   "from_pt": "VJ43",
+   "to_pt": "VJ44",
+   "qty": 21.7,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-30",
+   "stage": "sudura",
+   "from_pt": "VJ43",
+   "to_pt": "VJ44",
+   "qty": 21.7,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-30",
+   "stage": "teava",
+   "from_pt": "VJ43",
+   "to_pt": "VJ44",
+   "qty": 21.7,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-30",
+   "stage": "console",
+   "from_pt": "VJ44",
+   "to_pt": "VJ45",
+   "qty": 33.9,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-30",
+   "stage": "sudura",
+   "from_pt": "VJ44",
+   "to_pt": "VJ45",
+   "qty": 33.9,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-30",
+   "stage": "teava",
+   "from_pt": "VJ44",
+   "to_pt": "VJ45",
+   "qty": 33.9,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-30",
+   "stage": "console",
+   "from_pt": "VJ45",
+   "to_pt": "VJ46",
+   "qty": 30.0,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-30",
+   "stage": "sudura",
+   "from_pt": "VJ45",
+   "to_pt": "VJ46",
+   "qty": 30.0,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-10-30",
+   "stage": "teava",
+   "from_pt": "VJ45",
+   "to_pt": "VJ46",
+   "qty": 30.0,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-11-06",
+   "stage": "sapat",
+   "from_pt": "VJ61",
+   "to_pt": "VJ62",
+   "qty": 22.3,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-11-06",
+   "stage": "sudura",
+   "from_pt": "VJ61",
+   "to_pt": "VJ62",
+   "qty": 22.3,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-11-06",
+   "stage": "teava",
+   "from_pt": "VJ61",
+   "to_pt": "VJ62",
+   "qty": 22.3,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-11-21",
+   "stage": "sapat",
+   "from_pt": "VJ59",
+   "to_pt": "VJ60",
+   "qty": 31.2,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-11-21",
+   "stage": "sudura",
+   "from_pt": "VJ59",
+   "to_pt": "VJ60",
+   "qty": 25.0,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-11-21",
+   "stage": "sapat",
+   "from_pt": "VJ60",
+   "to_pt": "VJ61",
+   "qty": 4.0,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-11-21",
+   "stage": "sudura",
+   "from_pt": "VJ60",
+   "to_pt": "VJ61",
+   "qty": 4.0,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-11-21",
+   "stage": "teava",
+   "from_pt": "VJ60",
+   "to_pt": "VJ61",
+   "qty": 4.0,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-11-21",
+   "stage": "nisip",
+   "from_pt": "VJ79",
+   "to_pt": "VJ80",
+   "qty": 31.3,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-11-21",
+   "stage": "pamant",
+   "from_pt": "VJ79",
+   "to_pt": "VJ80",
+   "qty": 31.3,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-11-21",
+   "stage": "sapat",
+   "from_pt": "VJ79",
+   "to_pt": "VJ80",
+   "qty": 31.3,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-11-21",
+   "stage": "sudura",
+   "from_pt": "VJ79",
+   "to_pt": "VJ80",
+   "qty": 31.3,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  },
+  {
+   "work_date": "2026-11-21",
+   "stage": "teava",
+   "from_pt": "VJ79",
+   "to_pt": "VJ80",
+   "qty": 31.3,
+   "note": "Preluat din pagina Peștișani VJ36-VJ80"
+  }
+ ],
+ "expected": {
+  "s36": {
+   "sapat": "ns",
+   "sudura": "ns",
+   "teava": "ns",
+   "nisip": "ns",
+   "pamant": "ns",
+   "refacere": "ns"
+  },
+  "s37": {
+   "sapat": "ns",
+   "sudura": "ns",
+   "teava": "ns",
+   "nisip": "ns",
+   "pamant": "ns",
+   "refacere": "ns"
+  },
+  "s38a": {
+   "sapat": "ns",
+   "sudura": "ns",
+   "teava": "ns",
+   "nisip": "ns",
+   "pamant": "ns",
+   "refacere": "ns"
+  },
+  "s38b": {
+   "fundatii": "ns",
+   "suport": "ns",
+   "sudura": "ns",
+   "teava": "ns"
+  },
+  "s39a": {
+   "fundatii": "ns",
+   "suport": "ns",
+   "sudura": "ns",
+   "teava": "ns"
+  },
+  "s39b": {
+   "console": "done",
+   "sudura": "done",
+   "teava": "done"
+  },
+  "s40": {
+   "console": "done",
+   "sudura": "done",
+   "teava": "done"
+  },
+  "s41": {
+   "console": "done",
+   "sudura": "done",
+   "teava": "done"
+  },
+  "s42": {
+   "console": "done",
+   "sudura": "done",
+   "teava": "done"
+  },
+  "s43": {
+   "console": "done",
+   "sudura": "done",
+   "teava": "done"
+  },
+  "s44": {
+   "console": "done",
+   "sudura": "done",
+   "teava": "done"
+  },
+  "s45a": {
+   "console": "done",
+   "sudura": "done",
+   "teava": "done"
+  },
+  "s45b": {
+   "sapat": "ns",
+   "sudura": "ns",
+   "teava": "ns",
+   "nisip": "ns",
+   "pamant": "ns",
+   "refacere": "ns"
+  },
+  "s46": {
+   "sapat": "ns",
+   "sudura": "ns",
+   "teava": "ns",
+   "nisip": "ns",
+   "pamant": "ns",
+   "refacere": "ns"
+  },
+  "s47": {
+   "sapat": "ns",
+   "sudura": "ns",
+   "teava": "ns",
+   "nisip": "ns",
+   "pamant": "ns",
+   "refacere": "ns"
+  },
+  "s48": {
+   "sapat": "ns",
+   "sudura": "ns",
+   "teava": "ns",
+   "nisip": "ns",
+   "pamant": "ns",
+   "refacere": "ns"
+  },
+  "s49": {
+   "sapat": "ns",
+   "sudura": "ns",
+   "teava": "ns",
+   "nisip": "ns",
+   "pamant": "ns",
+   "refacere": "ns"
+  },
+  "s50": {
+   "sapat": "ns",
+   "sudura": "ns",
+   "teava": "ns",
+   "nisip": "ns",
+   "pamant": "ns",
+   "refacere": "ns"
+  },
+  "s51": {
+   "sapat": "ns",
+   "sudura": "ns",
+   "teava": "ns",
+   "nisip": "ns",
+   "pamant": "ns",
+   "refacere": "ns"
+  },
+  "s52": {
+   "sapat": "ns",
+   "sudura": "ns",
+   "teava": "ns",
+   "nisip": "ns",
+   "pamant": "ns",
+   "refacere": "ns"
+  },
+  "s53": {
+   "sapat": "ns",
+   "sudura": "ns",
+   "teava": "ns",
+   "nisip": "ns",
+   "pamant": "ns",
+   "refacere": "ns"
+  },
+  "s54": {
+   "sapat": "ns",
+   "sudura": "ns",
+   "teava": "ns",
+   "nisip": "ns",
+   "pamant": "ns",
+   "refacere": "ns"
+  },
+  "s55": {
+   "sapat": "ns",
+   "sudura": "ns",
+   "teava": "ns",
+   "nisip": "ns",
+   "pamant": "ns",
+   "refacere": "ns"
+  },
+  "s56": {
+   "sapat": "ns",
+   "sudura": "ns",
+   "teava": "ns",
+   "nisip": "ns",
+   "pamant": "ns",
+   "refacere": "ns"
+  },
+  "s57": {
+   "sapat": "ns",
+   "sudura": "ns",
+   "teava": "ns",
+   "nisip": "ns",
+   "pamant": "ns",
+   "refacere": "ns"
+  },
+  "s58": {
+   "sapat": "ns",
+   "sudura": "ns",
+   "teava": "ns",
+   "nisip": "ns",
+   "pamant": "ns",
+   "refacere": "ns"
+  },
+  "s59a": {
+   "sapat": "done",
+   "sudura": "done",
+   "teava": "ns",
+   "nisip": "ns",
+   "pamant": "ns",
+   "refacere": "ns"
+  },
+  "s59b": {
+   "sapat": "done",
+   "sudura": "ns",
+   "teava": "ns",
+   "nisip": "ns",
+   "pamant": "ns",
+   "refacere": "ns"
+  },
+  "s60": {
+   "sapat": "done",
+   "sudura": "done",
+   "teava": "done",
+   "nisip": "ns",
+   "pamant": "ns",
+   "refacere": "ns"
+  },
+  "s61": {
+   "sapat": "done",
+   "sudura": "done",
+   "teava": "done",
+   "nisip": "ns",
+   "pamant": "ns",
+   "refacere": "ns"
+  },
+  "s62": {
+   "sapat": "done",
+   "sudura": "ns",
+   "teava": "ns",
+   "nisip": "ns",
+   "pamant": "ns",
+   "refacere": "ns"
+  },
+  "s63": {
+   "sapat": "done",
+   "sudura": "ns",
+   "teava": "ns",
+   "nisip": "ns",
+   "pamant": "ns",
+   "refacere": "ns"
+  },
+  "s64": {
+   "sapat": "done",
+   "sudura": "ns",
+   "teava": "ns",
+   "nisip": "ns",
+   "pamant": "ns",
+   "refacere": "ns"
+  },
+  "s65": {
+   "sapat": "done",
+   "sudura": "done",
+   "teava": "ns",
+   "nisip": "ns",
+   "pamant": "ns",
+   "refacere": "ns"
+  },
+  "s66": {
+   "sapat": "done",
+   "sudura": "done",
+   "teava": "ns",
+   "nisip": "ns",
+   "pamant": "ns",
+   "refacere": "ns"
+  },
+  "s67": {
+   "sapat": "done",
+   "sudura": "done",
+   "teava": "ns",
+   "nisip": "ns",
+   "pamant": "ns",
+   "refacere": "ns"
+  },
+  "s68": {
+   "sapat": "done",
+   "sudura": "done",
+   "teava": "ns",
+   "nisip": "ns",
+   "pamant": "ns",
+   "refacere": "ns"
+  },
+  "s69": {
+   "sapat": "done",
+   "sudura": "done",
+   "teava": "done",
+   "nisip": "ns",
+   "pamant": "ns",
+   "refacere": "ns"
+  },
+  "s70": {
+   "sapat": "done",
+   "sudura": "done",
+   "teava": "done",
+   "nisip": "ns",
+   "pamant": "ns",
+   "refacere": "ns"
+  },
+  "s71": {
+   "sapat": "done",
+   "sudura": "done",
+   "teava": "done",
+   "nisip": "ns",
+   "pamant": "ns",
+   "refacere": "ns"
+  },
+  "s72": {
+   "sapat": "done",
+   "sudura": "done",
+   "teava": "done",
+   "nisip": "done",
+   "pamant": "done",
+   "refacere": "ns"
+  },
+  "s73": {
+   "console": "done",
+   "sudura": "done",
+   "teava": "done"
+  },
+  "s74a": {
+   "console": "done",
+   "sudura": "done",
+   "teava": "done"
+  },
+  "s74b": {
+   "sapat": "done",
+   "sudura": "done",
+   "teava": "done",
+   "nisip": "done",
+   "pamant": "done",
+   "refacere": "ns"
+  },
+  "s75": {
+   "sapat": "done",
+   "sudura": "done",
+   "teava": "done",
+   "nisip": "done",
+   "pamant": "done",
+   "refacere": "ns"
+  },
+  "s76": {
+   "sapat": "done",
+   "sudura": "done",
+   "teava": "done",
+   "nisip": "done",
+   "pamant": "done",
+   "refacere": "ns"
+  },
+  "s77": {
+   "sapat": "done",
+   "sudura": "done",
+   "teava": "done",
+   "nisip": "done",
+   "pamant": "done",
+   "refacere": "ns"
+  },
+  "s78": {
+   "sapat": "done",
+   "sudura": "done",
+   "teava": "done",
+   "nisip": "done",
+   "pamant": "done",
+   "refacere": "ns"
+  },
+  "s79": {
+   "sapat": "done",
+   "sudura": "done",
+   "teava": "done",
+   "nisip": "done",
+   "pamant": "done",
+   "refacere": "ns"
+  }
+ }
+}
