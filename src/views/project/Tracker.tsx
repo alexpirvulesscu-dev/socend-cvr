@@ -44,7 +44,7 @@ import {
   type Tone,
 } from '../../components/ui'
 import { toast } from '../../components/Toast'
-import { JurnalZilnic, LucrareAditionalaModal } from './TrackerJurnal'
+import { JurnalZilnic, LucrareAditionala } from './TrackerJurnal'
 
 // Culorile de stare, ca pe pagina Peștișani: albastru = gata, galben = în lucru, gri = neînceput.
 // Culoarea porțiunii pe traseu vine din tipul de lucrare (mediul), nu din stare.
@@ -454,6 +454,7 @@ function SegmentPanel({
       <p className="mt-3 text-sub text-ink-3">
         Folosește bifele doar pentru corecturi. De obicei se bifează cu „Am ajuns la…".
       </p>
+      <LucrareAditionala data={data} seg={seg} onSaved={onChanged} />
     </Modal>
   )
 }
@@ -660,7 +661,6 @@ function CumStamAzi({ data, setData }: { data: TrackerData; setData: (d: Tracker
 export function TrackerProiect({ trackerId }: { trackerId: string }) {
   const { data, error, reload, setData } = useTracker(trackerId)
   const [tab, setTab] = useState<'azi' | 'jurnal'>('azi')
-  const [aditionala, setAditionala] = useState(false)
 
   if (error) return <ErrorStrip message={`Nu am putut încărca trackerul: ${error}`} onRetry={() => void reload()} />
   if (!data) return <Skeleton className="h-64 w-full" />
@@ -672,10 +672,7 @@ export function TrackerProiect({ trackerId }: { trackerId: string }) {
           {data.tracker.subtitle && <p className="text-sub font-semibold text-ink-3">{data.tracker.subtitle}</p>}
           <h2 className="text-card font-semibold text-ink-1">{data.tracker.name}</h2>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {(data.tracker.config.dailyColumns ?? []).some((c) => c.group === 'aditionale') && (
-            <GhostButton onClick={() => setAditionala(true)}>+ Adaugă lucrare adițională</GhostButton>
-          )}
+        <div>
           <SegmentedControl
             value={tab}
             onChange={setTab}
@@ -686,7 +683,7 @@ export function TrackerProiect({ trackerId }: { trackerId: string }) {
           />
         </div>
       </div>
-      {aditionala && <LucrareAditionalaModal data={data} onClose={() => setAditionala(false)} onSaved={setData} />}
+
       {tab === 'azi' ? <CumStamAzi data={data} setData={setData} /> : <JurnalZilnic data={data} setData={setData} />}
     </div>
   )

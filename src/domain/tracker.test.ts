@@ -100,28 +100,38 @@ describe('tracker: puncte de control', () => {
   })
 })
 
-import { groupWeeks, lineLabel, linesOf, sumLines, weekStart, type DayLine } from './tracker'
+import { dayPlaces, groupWeeks, weekStart } from './tracker'
 
-describe('tracker: jurnalul pe locuri și pe săptămâni', () => {
-  const cols = [
-    { id: 'sapat', label: 'Săpătură', unit: 'ml' },
-    { id: 'piconare', label: 'Piconare stâncă/beton', unit: 'ml' },
+describe('tracker: jurnalul zilnic', () => {
+  const jcfg: TrackerConfig = {
+    ...cfg,
+    dailyColumns: [
+      { id: 'sapat', label: 'Săpătură', unit: 'ml' },
+      { id: 'teava', label: 'Montaj țeavă', unit: 'ml' },
+      { id: 'piconare', label: 'Piconare stâncă/beton', unit: 'ml' },
+    ],
+  }
+  const marks = [
+    { segment_code: 's79', stage: 'sapat', done_on: '2026-11-24' },
+    { segment_code: 's78', stage: 'sapat', done_on: '2026-11-24' },
+    { segment_code: 's70', stage: 'sapat', done_on: '2026-11-24' },
+    { segment_code: 's77', stage: 'sapat', done_on: '2026-11-20' },
+    { segment_code: 's79', stage: 'teava', done_on: '2026-11-24' },
   ]
 
-  it('totalul zilei este suma locurilor', () => {
-    const lines: DayLine[] = [
-      { id: 'a', from_pt: 'VJ65', to_pt: 'VJ72', qty: { sapat: 40 }, note: null },
-      { id: 'b', from_pt: 'VJ36', to_pt: 'VJ40', qty: { sapat: 12.5, piconare: 6 }, note: null },
-    ]
-    expect(sumLines(lines, cols)).toEqual({ sapat: 52.5, piconare: 6 })
+  it('locul vine din bifele zilei, doar pentru lucrările cu cantitate în jurnal', () => {
+    const day = { work_date: '2026-11-24', qty: { sapat: 10 }, lines: [] }
+    // țeava e bifată în aceeași zi, dar jurnalul nu are metri de țeavă → nu apare
+    expect(dayPlaces(jcfg, segs, marks, day)).toEqual([{ label: 'Săpătură', where: 'VJ70-VJ71, VJ78-VJ80' }])
   })
 
-  it('o zi veche, fără locuri, apare ca un singur rând fără loc', () => {
-    const l = linesOf({ qty: { sapat: 20 }, lines: [] })
-    expect(l).toHaveLength(1)
-    expect(lineLabel(l[0])).toBe('fără loc')
-    expect(sumLines(l, cols)).toEqual({ sapat: 20 })
-    expect(linesOf({ qty: {}, lines: [] })).toEqual([])
+  it('lucrarea adițională arată porțiunea de pe care a fost adăugată', () => {
+    const day = {
+      work_date: '2026-11-24',
+      qty: { piconare: 6 },
+      lines: [{ id: 'a', from_pt: 'VJ41', to_pt: 'VJ42', qty: { piconare: 6 }, note: null }],
+    }
+    expect(dayPlaces(jcfg, segs, marks, day)).toEqual([{ label: 'Piconare stâncă/beton', where: 'VJ41-VJ42' }])
   })
 
   it('săptămâna începe lunea, iar săptămânile vin cele mai noi primele', () => {

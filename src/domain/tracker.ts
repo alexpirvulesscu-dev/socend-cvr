@@ -225,10 +225,12 @@ export function segmentLabel(s: Segment): string {
   return s.parts > 1 ? `${base} (${s.part + 1}/${s.parts})` : base
 }
 
-// ── Jurnalul zilnic pe locuri ────────────────────────────────────────────
-// O zi are mai multe rânduri: fiecare rând = un loc (de la VJ, până la VJ)
-// cu cantitățile lui. Totalul zilei este suma rândurilor.
+// ── Jurnalul zilnic: locul lucrărilor ────────────────────────────────────
+// Jurnalul are un rând pe zi. Locul nu se scrie de mână: vine din bifele de pe
+// traseu (ziua în care o porțiune a fost bifată gata) și din lucrările
+// adiționale adăugate pe o porțiune.
 
+/** O lucrare adițională adăugată de pe o porțiune a traseului. */
 export interface DayLine {
   id: string
   from_pt: string | null
@@ -237,30 +239,48 @@ export interface DayLine {
   note: string | null
 }
 
-/**
- * Rândurile unei zile. Zilele vechi (scrise înainte de locuri) au doar totalul:
- * apar ca un singur rând fără loc, ca să nu se piardă nimic.
- */
-export function linesOf(day: { qty: Record<string, number>; lines?: DayLine[] | null }): DayLine[] {
-  if (day.lines && day.lines.length) return day.lines
-  const has = Object.values(day.qty ?? {}).some((v) => Number(v) > 0)
-  return has ? [{ id: 'vechi', from_pt: null, to_pt: null, qty: day.qty, note: null }] : []
+/** „VJ65-VJ72" pentru un șir de porțiuni lipite una de alta. */
+function runs(list: Segment[]): string[] {
+  const sorted = [...list].sort((a, b) => a.sort_order - b.sort_order)
+  const out: { from: string; to: string }[] = []
+  for (const s of sorted) {
+    const last = out[out.length - 1]
+    if (last && (last.to === s.from_pt || last.to === s.to_pt)) last.to = s.to_pt
+    else out.push({ from: s.from_pt, to: s.to_pt })
+  }
+  return out.map((r) => `${r.from}-${r.to}`)
 }
 
-/** Totalul zilei = suma rândurilor, doar coloanele cu valoare. */
-export function sumLines(lines: DayLine[], cols: DailyColumn[]): Record<string, number> {
-  const out: Record<string, number> = {}
+/**
+ * Unde s-a lucrat într-o zi, câte un rând pe lucrare:
+ *  · lucrările de pe traseu: porțiunile bifate gata în ziua aceea, dacă jurnalul
+ *    are cantitate pe lucrarea respectivă în aceeași zi
+ *  · lucrările adiționale: porțiunea de pe care au fost adăugate
+ */
+export function dayPlaces(
+  cfg: TrackerConfig,
+  segments: Segment[],
+  marks: Mark[],
+  day: { work_date: string; qty: Record<string, number>; lines?: DayLine[] | null }
+): { label: string; where: string }[] {
+  const out: { label: string; where: string }[] = []
+  const cols = cfg.dailyColumns ?? []
+  const byCode = new Map(segments.map((s) => [s.code, s]))
+  for (const st of cfg.stages) {
+    // coloana lucrării: același nume, sau împărțită pe echipe (sudura → sudura_e1, sudura_e2)
+    const has = cols.some((c) => (c.id === st.id || c.id.startsWith(st.id + '_')) && Number(day.qty[c.id] ?? 0) > 0)
+    if (!has) continue
+    const segs = marks
+      .filter((m) => m.stage === st.id && m.done_on === day.work_date)
+      .map((m) => byCode.get(m.segment_code))
+      .filter((s): s is Segment => !!s)
+    if (segs.length) out.push({ label: st.label, where: runs(segs).join(', ') })
+  }
   for (const c of cols) {
-    const v = lines.reduce((s, l) => s + Number(l.qty[c.id] ?? 0), 0)
-    if (v > 0) out[c.id] = Math.round(v * 100) / 100
+    const places = (day.lines ?? []).filter((l) => Number(l.qty[c.id] ?? 0) > 0 && l.from_pt && l.to_pt)
+    if (places.length) out.push({ label: c.label, where: [...new Set(places.map((l) => `${l.from_pt}-${l.to_pt}`))].join(', ') })
   }
   return out
-}
-
-/** „VJ65 → VJ72", „VJ65" sau „fără loc". */
-export function lineLabel(l: { from_pt: string | null; to_pt: string | null }): string {
-  if (l.from_pt && l.to_pt) return `${l.from_pt} → ${l.to_pt}`
-  return l.from_pt ?? l.to_pt ?? 'fără loc'
 }
 
 function addDays(iso: string, n: number): string {
