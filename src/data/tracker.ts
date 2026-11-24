@@ -42,12 +42,12 @@ export interface DayRow {
   note: string | null
 }
 
-/** O notă datată pe o porțiune a traseului. */
+/** Un comentariu pe o porțiune a traseului; data și ora se pun singure. */
 export interface SegNote {
   id: string
   segment_code: string
-  note_date: string
   body: string
+  created_at: string
 }
 
 export interface TrackerData {
@@ -97,7 +97,7 @@ async function fetchTracker(id: string): Promise<TrackerData> {
     supabase.from('cvr_tracker_marks').select('segment_code, stage, done_on').eq('tracker_id', id).limit(10000),
     supabase.from('cvr_tracker_checkpoints').select(CP_COLS).eq('tracker_id', id).order('created_at'),
     supabase.from('cvr_tracker_days').select(DAY_COLS).eq('tracker_id', id).order('work_date', { ascending: false }),
-    supabase.from('cvr_tracker_segment_notes').select('id, segment_code, note_date, body').eq('tracker_id', id).limit(10000),
+    supabase.from('cvr_tracker_segment_notes').select('id, segment_code, body, created_at').eq('tracker_id', id).limit(10000),
   ])
   for (const r of [t, s, p, m, c, d, n]) if (r.error) throw r.error
   return {
@@ -195,11 +195,11 @@ export async function deleteDay(id: string): Promise<void> {
 
 // ── Notele porțiunilor (0033) ────────────────────────────────────────────
 
-const NOTE_COLS = 'id, segment_code, note_date, body'
+const NOTE_COLS = 'id, segment_code, body, created_at'
 
 export async function addSegNote(
   trackerId: string,
-  n: { segment_code: string; note_date: string; body: string }
+  n: { segment_code: string; body: string }
 ): Promise<SegNote> {
   const { data, error } = await supabase
     .from('cvr_tracker_segment_notes')
@@ -210,10 +210,10 @@ export async function addSegNote(
   return data as SegNote
 }
 
-export async function updateSegNote(id: string, patch: { note_date: string; body: string }): Promise<SegNote> {
+export async function updateSegNote(id: string, body: string): Promise<SegNote> {
   const { data, error } = await supabase
     .from('cvr_tracker_segment_notes')
-    .update(patch)
+    .update({ body })
     .eq('id', id)
     .select(NOTE_COLS)
     .single()

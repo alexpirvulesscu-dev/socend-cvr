@@ -214,7 +214,7 @@ function Traseu({
                       })}
                     {withNotes.has(s.code) && sw > dw + 30 && (
                       <text x={cx + dw / 2 + 5} y={Y + 24} fontSize={12} fill={color.ink3}>
-                        ✎<title>Are note</title>
+                        ✎<title>Are comentarii</title>
                       </text>
                     )}
                   </g>
@@ -465,7 +465,19 @@ function SegmentPanel({
   )
 }
 
-/** Notele unei porțiuni: listă cu dată, ca niște comentarii. Se pot modifica și șterge. */
+/** Data și ora unui comentariu, pe ora României: „24 nov. 2026, 18:42". */
+function cand(iso: string): string {
+  return new Date(iso).toLocaleString('ro-RO', {
+    timeZone: 'Europe/Bucharest',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+/** Comentariile unei porțiuni, ca discuțiile din Notion: scrii, Enter, iar data și ora se pun singure. */
 function NoteSectiune({
   data,
   seg,
@@ -477,10 +489,9 @@ function NoteSectiune({
 }) {
   const list = data.notes
     .filter((n) => n.segment_code === seg.code)
-    .sort((a, b) => (a.note_date < b.note_date ? 1 : a.note_date > b.note_date ? -1 : 0))
+    .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
   const [body, setBody] = useState('')
-  const [date, setDate] = useState(azi())
-  const [edit, setEdit] = useState<SegNote | null>(null)
+  const [edit, setEdit] = useState<{ id: string; body: string } | null>(null)
   const [busy, setBusy] = useState(false)
 
   async function run(fn: () => Promise<void>) {
@@ -488,7 +499,7 @@ function NoteSectiune({
     try {
       await fn()
     } catch (e) {
-      toast(`Nu s-a salvat: ${e instanceof Error ? e.message : e}`)
+      toast(`Nu s-a salvat: ${e instanceof Error ? e.message : ((e as { message?: string })?.message ?? e)}`)
     } finally {
       setBusy(false)
     }
@@ -496,8 +507,8 @@ function NoteSectiune({
 
   const add = () =>
     run(async () => {
-      if (!body.trim()) return toast('Scrie nota.')
-      const n = await addSegNote(data.tracker.id, { segment_code: seg.code, note_date: date, body: body.trim() })
+      if (!body.trim()) return
+      const n = await addSegNote(data.tracker.id, { segment_code: seg.code, body: body.trim() })
       onChanged({ ...data, notes: [...data.notes, n] })
       setBody('')
     })
@@ -505,60 +516,54 @@ function NoteSectiune({
   const saveEdit = () =>
     run(async () => {
       if (!edit) return
-      if (!edit.body.trim()) return toast('Nota nu poate fi goală. Șterge-o dacă nu mai e bună.')
-      const n = await updateSegNote(edit.id, { note_date: edit.note_date, body: edit.body.trim() })
+      if (!edit.body.trim()) return toast('Comentariul nu poate fi gol. Șterge-l dacă nu mai e bun.')
+      const n = await updateSegNote(edit.id, edit.body.trim())
       onChanged({ ...data, notes: data.notes.map((x) => (x.id === n.id ? n : x)) })
       setEdit(null)
     })
 
   const remove = (n: SegNote) =>
     run(async () => {
-      if (!window.confirm(`Ștergi nota din ${dataRo(n.note_date)}?`)) return
+      if (!window.confirm(`Ștergi comentariul din ${cand(n.created_at)}?`)) return
       await deleteSegNote(n.id)
       onChanged({ ...data, notes: data.notes.filter((x) => x.id !== n.id) })
     })
 
-  const area =
-    'min-h-[64px] w-full rounded-btn border border-line-2 bg-paper-0 p-3 text-row text-ink-1 focus:border-accent'
-  const dateCls = 'h-10 rounded-btn border border-line-2 bg-paper-0 px-3 text-row text-ink-1 focus:border-accent'
+  const field =
+    'w-full rounded-btn border border-transparent bg-transparent px-3 py-2 text-row text-ink-1 placeholder:text-ink-4 hover:border-line-2 focus:border-accent focus:bg-paper-0'
   const link = 'text-sub font-semibold text-ink-3 hover:text-ink-1'
 
   return (
     <div className="mt-4 border-t border-line-1 pt-4">
-      <p className="mb-2 text-row font-semibold text-ink-1">Note</p>
-      <textarea
-        value={body}
-        onChange={(e) => setBody(e.target.value)}
-        placeholder="ex. mai sunt 5 m de săpătură în beton"
-        aria-label="Notă nouă"
-        className={area}
-      />
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} aria-label="Data notei" className={dateCls} />
-        <GhostButton onClick={() => void add()} disabled={busy}>
-          Adaugă nota
-        </GhostButton>
+      <p className="mb-1 text-row font-semibold text-ink-1">Comentarii</p>
+      <div className="flex items-center gap-2 border-b border-line-1 pb-2">
+        <input
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && !busy && void add()}
+          placeholder="Adaugă un comentariu…"
+          aria-label="Comentariu nou"
+          className={field}
+        />
+        {body.trim() && (
+          <button onClick={() => void add()} disabled={busy} className="shrink-0 rounded-full bg-info-fill px-3.5 py-1.5 text-sub font-semibold text-paper-0 disabled:opacity-50">
+            Trimite
+          </button>
+        )}
       </div>
       {list.length > 0 && (
-        <ul className="mt-3 divide-y divide-line-1">
+        <ul className="divide-y divide-line-1">
           {list.map((n) =>
             edit?.id === n.id ? (
               <li key={n.id} className="py-3">
                 <textarea
                   value={edit.body}
                   onChange={(e) => setEdit({ ...edit, body: e.target.value })}
-                  aria-label="Modifică nota"
+                  aria-label="Modifică comentariul"
                   autoFocus
-                  className={area}
+                  className="min-h-[64px] w-full rounded-btn border border-line-2 bg-paper-0 p-3 text-row text-ink-1 focus:border-accent"
                 />
                 <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <input
-                    type="date"
-                    value={edit.note_date}
-                    onChange={(e) => setEdit({ ...edit, note_date: e.target.value })}
-                    aria-label="Data notei"
-                    className={dateCls}
-                  />
                   <PrimaryButton onClick={() => void saveEdit()} disabled={busy}>
                     Salvează
                   </PrimaryButton>
@@ -566,11 +571,11 @@ function NoteSectiune({
                 </div>
               </li>
             ) : (
-              <li key={n.id} className="py-2.5">
+              <li key={n.id} className="px-3 py-2.5">
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-sub font-semibold text-ink-3">{dataRo(n.note_date)}</span>
+                  <span className="text-sub font-semibold text-ink-3">{cand(n.created_at)}</span>
                   <span className="flex gap-3">
-                    <button onClick={() => setEdit(n)} className={link}>
+                    <button onClick={() => setEdit({ id: n.id, body: n.body })} className={link}>
                       Modifică
                     </button>
                     <button onClick={() => void remove(n)} className={`${link} hover:!text-neg`}>
