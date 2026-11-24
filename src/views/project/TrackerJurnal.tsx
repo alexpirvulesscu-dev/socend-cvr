@@ -352,7 +352,7 @@ export function JurnalZilnic({ data, setData }: { data: TrackerData; setData: (d
   const td = 'border-b border-line-1 px-1 py-1'
   const sticky = 'sticky left-0 z-[1]'
   // linia subțire care desparte grupurile de coloane
-  const edge = (i: number) => (i > 0 && cols[i].group !== cols[i - 1].group ? 'border-l border-l-line-2' : '')
+  const edge = (i: number) => (i === 0 || cols[i].group !== cols[i - 1].group ? 'border-l border-l-line-2' : '')
   const numTd = `${td} px-3 text-right text-row tabular-nums`
 
   return (
@@ -376,7 +376,7 @@ export function JurnalZilnic({ data, setData }: { data: TrackerData; setData: (d
         <table className="w-max border-separate border-spacing-0">
           <thead>
             <tr>
-              <th className={`${th} ${sticky} border-b-0 bg-paper-0`} />
+              <th className={`${th} ${sticky} bg-paper-0`} />
               {groups.map((g) => (
                 <th
                   key={g.id}
@@ -386,7 +386,8 @@ export function JurnalZilnic({ data, setData }: { data: TrackerData; setData: (d
                   {g.label}
                 </th>
               ))}
-              <th className="border-b-0" colSpan={2} />
+              <th className="border-b border-l border-line-2" />
+              <th className="border-b border-l border-line-2" />
             </tr>
             <tr>
               <th className={`${th} ${sticky} bg-paper-0 pl-5 text-left`}>Data</th>
@@ -397,7 +398,7 @@ export function JurnalZilnic({ data, setData }: { data: TrackerData; setData: (d
                 </th>
               ))}
               <th className={`${th} min-w-[220px] border-l border-l-line-2 pl-3 text-left`}>Observații</th>
-              <th className={`${th} min-w-[220px] pl-3 text-left`}>Unde</th>
+              <th className={`${th} min-w-[220px] border-l border-l-line-2 pl-3 text-left`}>Unde</th>
             </tr>
           </thead>
           <tbody>
@@ -412,7 +413,7 @@ export function JurnalZilnic({ data, setData }: { data: TrackerData; setData: (d
               <td className={`${td} border-l border-l-line-2 px-3 text-sub text-ink-3`}>
                 {days.length} {days.length === 1 ? 'zi' : 'zile'} în jurnal
               </td>
-              <td className={td} />
+              <td className={`${td} border-l border-l-line-2`} />
             </tr>
 
             {weeks.map((w, wi) => {
@@ -441,7 +442,7 @@ export function JurnalZilnic({ data, setData }: { data: TrackerData; setData: (d
                     <td className={`${td} border-l border-l-line-2 px-3 text-sub text-ink-3`}>
                       {w.days.length} {w.days.length === 1 ? 'zi' : 'zile'}
                     </td>
-                    <td className={td} />
+                    <td className={`${td} border-l border-l-line-2`} />
                   </tr>
 
                   {open &&
@@ -468,7 +469,7 @@ export function JurnalZilnic({ data, setData }: { data: TrackerData; setData: (d
                             </td>
                           ))}
                           <td className={`${td} max-w-[320px] border-l border-l-line-2 px-3 text-row text-ink-2`}>{d.note}</td>
-                          <td className={`${td} max-w-[320px] px-3 text-row text-ink-2`}>
+                          <td className={`${td} max-w-[320px] border-l border-l-line-2 px-3 text-row text-ink-2`}>
                             {places.map((p) => (
                               <span key={p.label} className="block">
                                 <span className="font-semibold text-ink-1">{p.label}:</span> {p.where}
