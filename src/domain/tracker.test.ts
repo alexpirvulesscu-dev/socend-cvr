@@ -99,3 +99,37 @@ describe('tracker: puncte de control', () => {
     })
   })
 })
+
+import { groupWeeks, lineLabel, linesOf, sumLines, weekStart, type DayLine } from './tracker'
+
+describe('tracker: jurnalul pe locuri și pe săptămâni', () => {
+  const cols = [
+    { id: 'sapat', label: 'Săpătură', unit: 'ml' },
+    { id: 'piconare', label: 'Piconare stâncă/beton', unit: 'ml' },
+  ]
+
+  it('totalul zilei este suma locurilor', () => {
+    const lines: DayLine[] = [
+      { id: 'a', from_pt: 'VJ65', to_pt: 'VJ72', qty: { sapat: 40 }, note: null },
+      { id: 'b', from_pt: 'VJ36', to_pt: 'VJ40', qty: { sapat: 12.5, piconare: 6 }, note: null },
+    ]
+    expect(sumLines(lines, cols)).toEqual({ sapat: 52.5, piconare: 6 })
+  })
+
+  it('o zi veche, fără locuri, apare ca un singur rând fără loc', () => {
+    const l = linesOf({ qty: { sapat: 20 }, lines: [] })
+    expect(l).toHaveLength(1)
+    expect(lineLabel(l[0])).toBe('fără loc')
+    expect(sumLines(l, cols)).toEqual({ sapat: 20 })
+    expect(linesOf({ qty: {}, lines: [] })).toEqual([])
+  })
+
+  it('săptămâna începe lunea, iar săptămânile vin cele mai noi primele', () => {
+    expect(weekStart('2026-10-25')).toBe('2026-10-19') // duminică
+    expect(weekStart('2026-10-26')).toBe('2026-10-26') // luni
+    const w = groupWeeks([{ work_date: '2026-10-12' }, { work_date: '2026-10-27' }, { work_date: '2026-10-26' }])
+    expect(w.map((x) => x.start)).toEqual(['2026-10-26', '2026-10-12'])
+    expect(w[0].end).toBe('2026-11-01')
+    expect(w[0].days.map((d) => d.work_date)).toEqual(['2026-10-27', '2026-10-26'])
+  })
+})

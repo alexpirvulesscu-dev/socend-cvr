@@ -44,10 +44,12 @@ import {
   type Tone,
 } from '../../components/ui'
 import { toast } from '../../components/Toast'
-import { JurnalZilnic } from './TrackerJurnal'
+import { JurnalZilnic, LucrareAditionalaModal } from './TrackerJurnal'
 
-const STARE_FILL: Record<Stare, string> = { done: color.posFill, ip: color.warnFill, ns: color.line3 }
-const STARE_TONE: Record<Stare, Tone> = { done: 'pos', ip: 'warn', ns: 'neutral' }
+// Culorile de stare, ca pe pagina Peștișani: albastru = gata, galben = în lucru, gri = neînceput.
+// Culoarea porțiunii pe traseu vine din tipul de lucrare (mediul), nu din stare.
+const STARE_FILL: Record<Stare, string> = { done: color.infoFill, ip: color.warnFill, ns: color.line3 }
+const STARE_TONE: Record<Stare, Tone> = { done: 'info', ip: 'warn', ns: 'neutral' }
 
 const m1 = (n: number) => `${num(n, 1)} m`
 const zz = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}`
@@ -144,18 +146,21 @@ function Traseu({
           <div key={ri}>
             <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} role="img" aria-label={`Traseu ${rowPts[0]}-${lastPt}`}>
               <defs>
-                <pattern id="hatch-ip" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-                  <rect width="7" height="7" fill={color.paper0} />
-                  <rect width="3.5" height="7" fill={color.warnFill} />
-                </pattern>
+                {cfg.types.map((t) => (
+                  <pattern key={t.id} id={`hatch-${ri}-${t.id}`} width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+                    <rect width="7" height="7" fill={color.paper0} />
+                    <rect width="3.5" height="7" fill={t.color} />
+                  </pattern>
+                ))}
               </defs>
               {pos.map(({ s, x: sx, w: sw }) => {
                 const list = stagesFor(cfg, s.kind)
                 const applies = view === 'all' || list.includes(view)
                 const st: Stare =
                   view === 'all' ? segmentState(cfg, s, mm) : applies && isDone(mm, s.code, view) ? 'done' : 'ns'
-                const fill = st === 'done' ? color.posFill : st === 'ip' ? 'url(#hatch-ip)' : color.paper0
-                const stroke = st === 'ns' ? color.line3 : st === 'ip' ? color.warnFill : color.posFill
+                // culoarea = tipul de lucrare; plin = gata, hașurat = în lucru, gol = neînceput
+                const tc = typeColor(s.kind)
+                const fill = st === 'done' ? tc : st === 'ip' ? `url(#hatch-${ri}-${s.kind})` : color.paper0
                 const cx = sx + sw / 2
                 const gap = 9
                 const dw = list.length * gap
@@ -176,8 +181,7 @@ function Traseu({
                     }}
                   >
                     <rect className="hit" x={sx + 1} y={Y - 30} width={sw - 2} height={70} rx={10} fill="transparent" />
-                    <rect x={sx + 3} y={Y - 8} width={sw - 6} height={16} rx={8} fill={fill} stroke={stroke} strokeWidth={2} />
-                    <rect x={sx + 6} y={Y + 11} width={Math.max(sw - 12, 2)} height={3} rx={1.5} fill={typeColor(s.kind)} />
+                    <rect x={sx + 3} y={Y - 8} width={sw - 6} height={16} rx={8} fill={fill} stroke={tc} strokeWidth={2} />
                     {st === 'done' && sw > 26 && (
                       <path d={`M${cx - 5} ${Y} l3.5 3.5 l7 -7`} stroke="#fff" strokeWidth={2.2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
                     )}
@@ -186,19 +190,18 @@ function Traseu({
                         {num(Number(s.length_m), 1)}
                       </text>
                     )}
-                    {view === 'all' &&
-                      sw > dw + 8 &&
+                    {sw > dw + 8 &&
                       list.map((k2, i) => {
                         const v = isDone(mm, s.code, k2)
                         return (
                           <circle
                             key={k2}
                             cx={cx - dw / 2 + gap / 2 + i * gap}
-                            cy={Y + 24}
-                            r={3.3}
-                            fill={v ? color.posFill : color.track}
-                            stroke={v ? color.posFill : color.ink4}
-                            strokeWidth={1}
+                            cy={Y + 20}
+                            r={3.4}
+                            fill={v ? color.infoFill : color.track}
+                            stroke={v ? color.infoFill : color.ink4}
+                            strokeWidth={k2 === view ? 2 : 1}
                           >
                             <title>{`${stageLabel(cfg, k2)}: ${v ? 'gata' : 'nu e gata'}`}</title>
                           </circle>
@@ -439,7 +442,7 @@ function SegmentPanel({
                 disabled={busy === k}
                 aria-pressed={!!d}
                 className={`rounded-full px-3.5 py-1.5 text-sub font-semibold transition-colors duration-[120ms] ease-std ${
-                  d ? 'bg-pos-fill text-paper-0' : 'bg-segment text-ink-2 hover:text-ink-1'
+                  d ? 'bg-info-fill text-paper-0' : 'bg-segment text-ink-2 hover:text-ink-1'
                 }`}
               >
                 {d ? '✓ Gata' : 'Bifează gata'}
@@ -564,7 +567,7 @@ function CumStamAzi({ data, setData }: { data: TrackerData; setData: (d: Tracker
                 )}
               </span>
               <div className="col-span-2 h-2 rounded-full bg-track md:col-span-1">
-                <div className="h-full rounded-full bg-pos-fill" style={{ width: `${p.total ? (p.done / p.total) * 100 : 0}%` }} />
+                <div className="h-full rounded-full bg-info-fill" style={{ width: `${p.total ? (p.done / p.total) * 100 : 0}%` }} />
               </div>
               <span className="text-row tabular-nums text-ink-3 md:text-right">
                 {num(p.done, 1)} / {m1(p.total)}
@@ -580,7 +583,7 @@ function CumStamAzi({ data, setData }: { data: TrackerData; setData: (d: Tracker
 
       <Card
         title="Traseu"
-        subtitle="Verde = gata. Alege o lucrare pentru a vedea până unde s-a ajuns. Apasă pe o porțiune pentru a vedea ziua în care a fost gata sau pentru a corecta o bifă."
+        subtitle="Culoarea arată tipul de lucrare. Plin = gata, hașurat = în lucru, gol = neînceput. Punctele de sub fiecare porțiune sunt lucrările ei: albastru = gata. Apasă pe o porțiune pentru a vedea ziua sau pentru a corecta o bifă."
       >
         <div className="mb-3 flex flex-wrap gap-1.5" role="group" aria-label="Ce arată traseul">
           {[{ id: 'all', label: 'Stare generală' }, ...cfg.stages].map((g) => (
@@ -599,11 +602,26 @@ function CumStamAzi({ data, setData }: { data: TrackerData; setData: (d: Tracker
         <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 text-sub text-ink-3">
           {cfg.types.map((t) => (
             <span key={t.id} className="inline-flex items-center gap-1.5">
-              <span className="inline-block h-[3px] w-5 rounded" style={{ background: t.color }} />
+              <span className="inline-block h-2 w-5 rounded" style={{ background: t.color }} />
               {t.short}
               {sum.byType[t.id] ? ` ${m1(sum.byType[t.id])}` : ''}
             </span>
           ))}
+          <span className="inline-flex items-center gap-1.5">
+            <span className="inline-block h-2 w-5 rounded border-2 border-ink-3" />
+            neînceput
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span
+              className="inline-block h-2 w-5 rounded"
+              style={{ background: `repeating-linear-gradient(45deg, ${color.ink3} 0 3px, transparent 3px 6px)` }}
+            />
+            în lucru
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="inline-block h-2 w-5 rounded bg-ink-3" />
+            finalizat
+          </span>
         </div>
         <Traseu data={data} mm={mm} view={view} front={front} onSegment={setSeg} onPoint={setPoint} />
       </Card>
@@ -642,6 +660,7 @@ function CumStamAzi({ data, setData }: { data: TrackerData; setData: (d: Tracker
 export function TrackerProiect({ trackerId }: { trackerId: string }) {
   const { data, error, reload, setData } = useTracker(trackerId)
   const [tab, setTab] = useState<'azi' | 'jurnal'>('azi')
+  const [aditionala, setAditionala] = useState(false)
 
   if (error) return <ErrorStrip message={`Nu am putut încărca trackerul: ${error}`} onRetry={() => void reload()} />
   if (!data) return <Skeleton className="h-64 w-full" />
@@ -653,15 +672,21 @@ export function TrackerProiect({ trackerId }: { trackerId: string }) {
           {data.tracker.subtitle && <p className="text-sub font-semibold text-ink-3">{data.tracker.subtitle}</p>}
           <h2 className="text-card font-semibold text-ink-1">{data.tracker.name}</h2>
         </div>
-        <SegmentedControl
-          value={tab}
-          onChange={setTab}
-          options={[
-            { value: 'azi', label: 'Cum stăm azi' },
-            { value: 'jurnal', label: 'Jurnal zilnic' },
-          ]}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          {(data.tracker.config.dailyColumns ?? []).some((c) => c.group === 'aditionale') && (
+            <GhostButton onClick={() => setAditionala(true)}>+ Adaugă lucrare adițională</GhostButton>
+          )}
+          <SegmentedControl
+            value={tab}
+            onChange={setTab}
+            options={[
+              { value: 'azi', label: 'Cum stăm azi' },
+              { value: 'jurnal', label: 'Jurnal zilnic' },
+            ]}
+          />
+        </div>
       </div>
+      {aditionala && <LucrareAditionalaModal data={data} onClose={() => setAditionala(false)} onSaved={setData} />}
       {tab === 'azi' ? <CumStamAzi data={data} setData={setData} /> : <JurnalZilnic data={data} setData={setData} />}
     </div>
   )

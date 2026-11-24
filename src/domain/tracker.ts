@@ -224,3 +224,75 @@ export function segmentLabel(s: Segment): string {
   const base = `${s.from_pt}-${s.to_pt}`
   return s.parts > 1 ? `${base} (${s.part + 1}/${s.parts})` : base
 }
+
+// ── Jurnalul zilnic pe locuri ────────────────────────────────────────────
+// O zi are mai multe rânduri: fiecare rând = un loc (de la VJ, până la VJ)
+// cu cantitățile lui. Totalul zilei este suma rândurilor.
+
+export interface DayLine {
+  id: string
+  from_pt: string | null
+  to_pt: string | null
+  qty: Record<string, number>
+  note: string | null
+}
+
+/**
+ * Rândurile unei zile. Zilele vechi (scrise înainte de locuri) au doar totalul:
+ * apar ca un singur rând fără loc, ca să nu se piardă nimic.
+ */
+export function linesOf(day: { qty: Record<string, number>; lines?: DayLine[] | null }): DayLine[] {
+  if (day.lines && day.lines.length) return day.lines
+  const has = Object.values(day.qty ?? {}).some((v) => Number(v) > 0)
+  return has ? [{ id: 'vechi', from_pt: null, to_pt: null, qty: day.qty, note: null }] : []
+}
+
+/** Totalul zilei = suma rândurilor, doar coloanele cu valoare. */
+export function sumLines(lines: DayLine[], cols: DailyColumn[]): Record<string, number> {
+  const out: Record<string, number> = {}
+  for (const c of cols) {
+    const v = lines.reduce((s, l) => s + Number(l.qty[c.id] ?? 0), 0)
+    if (v > 0) out[c.id] = Math.round(v * 100) / 100
+  }
+  return out
+}
+
+/** „VJ65 → VJ72", „VJ65" sau „fără loc". */
+export function lineLabel(l: { from_pt: string | null; to_pt: string | null }): string {
+  if (l.from_pt && l.to_pt) return `${l.from_pt} → ${l.to_pt}`
+  return l.from_pt ?? l.to_pt ?? 'fără loc'
+}
+
+function addDays(iso: string, n: number): string {
+  const d = new Date(iso + 'T00:00:00Z')
+  d.setUTCDate(d.getUTCDate() + n)
+  return d.toISOString().slice(0, 10)
+}
+
+/** Lunea săptămânii în care cade ziua. */
+export function weekStart(iso: string): string {
+  const dow = new Date(iso + 'T00:00:00Z').getUTCDay()
+  return addDays(iso, -((dow + 6) % 7))
+}
+
+export interface Week<T> {
+  start: string
+  end: string
+  days: T[]
+}
+
+/** Zilele grupate pe săptămâni (luni-duminică), cele mai noi primele. */
+export function groupWeeks<T extends { work_date: string }>(days: T[]): Week<T>[] {
+  const map = new Map<string, T[]>()
+  for (const d of days) {
+    const k = weekStart(d.work_date)
+    map.set(k, [...(map.get(k) ?? []), d])
+  }
+  return [...map.entries()]
+    .sort((a, b) => (a[0] < b[0] ? 1 : -1))
+    .map(([start, list]) => ({
+      start,
+      end: addDays(start, 6),
+      days: list.sort((a, b) => (a.work_date < b.work_date ? 1 : -1)),
+    }))
+}

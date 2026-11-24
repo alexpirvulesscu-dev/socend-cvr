@@ -1,10 +1,11 @@
 // Citirea și scrierea trackerului de execuție (0027, 0030).
 //  · bifele (cvr_tracker_marks): ce porțiune e gata pe ce lucrare și din ce zi
 //  · punctele de control (cvr_tracker_checkpoints): „am ajuns cu X la VJ47"
-//  · jurnalul zilnic (cvr_tracker_days): un rând pe zi cu cantitățile
+//  · jurnalul zilnic (cvr_tracker_days): un rând pe zi; în `lines` stau locurile zilei,
+//    iar `qty` e totalul lor (0031)
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import type { Checkpoint, Mark, Segment, Stare, TrackerConfig } from '../domain/tracker'
+import type { Checkpoint, DayLine, Mark, Segment, Stare, TrackerConfig } from '../domain/tracker'
 
 export interface TrackerRow {
   id: string
@@ -36,6 +37,8 @@ export interface DayRow {
   id: string
   work_date: string
   qty: Record<string, number>
+  /** rândurile zilei, câte unul pe loc (0031); gol la zilele vechi */
+  lines: DayLine[]
   note: string | null
 }
 
@@ -66,7 +69,7 @@ export function useTrackerList() {
   return list
 }
 
-const DAY_COLS = 'id, work_date, qty, note'
+const DAY_COLS = 'id, work_date, qty, lines, note'
 const CP_COLS = 'id, stage, from_pt, at_pt, done_on, created_at'
 
 async function fetchTracker(id: string): Promise<TrackerData> {
@@ -162,7 +165,7 @@ export async function setMark(trackerId: string, m: Mark, on: boolean): Promise<
 
 export async function saveDay(
   trackerId: string,
-  day: { work_date: string; qty: Record<string, number>; note: string | null }
+  day: { work_date: string; qty: Record<string, number>; lines: DayLine[]; note: string | null }
 ): Promise<DayRow> {
   const { data, error } = await supabase
     .from('cvr_tracker_days')
