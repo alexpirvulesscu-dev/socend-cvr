@@ -26,6 +26,7 @@ import {
   saveCheckpoint,
   setMark,
   updatePoint,
+  updateSegmentNote,
   useTracker,
   type PointRow,
   type TrackerData,
@@ -406,6 +407,22 @@ function SegmentPanel({
   const list = stagesFor(cfg, seg.kind)
   const type = cfg.types.find((t) => t.id === seg.kind)
   const [busy, setBusy] = useState<string | null>(null)
+  const [note, setNote] = useState(seg.note ?? '')
+  const [saved, setSaved] = useState(seg.note ?? '')
+
+  /** Nota porțiunii se salvează când ieși din câmp. */
+  async function saveNote() {
+    const v = note.trim()
+    if (v === saved.trim()) return
+    try {
+      await updateSegmentNote(seg.id, v || null)
+      setSaved(v)
+      onChanged({ ...data, segments: data.segments.map((x) => (x.id === seg.id ? { ...x, note: v || null } : x)) })
+      toast('Notă salvată', 'success')
+    } catch (e) {
+      toast(`Nu s-a salvat: ${e instanceof Error ? e.message : e}`)
+    }
+  }
 
   async function toggle(stage: string) {
     const on = !isDone(mm, seg.code, stage)
@@ -426,7 +443,6 @@ function SegmentPanel({
     <Modal title={segmentLabel(seg)} onClose={onClose}>
       <p className="-mt-2 mb-4 text-row text-ink-3">
         {m1(Number(seg.length_m))} · {type?.label ?? seg.kind}
-        {seg.note ? ` · ${seg.note}` : ''}
       </p>
       <ul className="divide-y divide-line-1">
         {list.map((k) => {
@@ -451,10 +467,21 @@ function SegmentPanel({
           )
         })}
       </ul>
-      <p className="mt-3 text-sub text-ink-3">
-        Folosește bifele doar pentru corecturi. De obicei se bifează cu „Am ajuns la…".
-      </p>
       <LucrareAditionala data={data} seg={seg} onSaved={onChanged} />
+      <div className="mt-4 border-t border-line-1 pt-4">
+        <label htmlFor="seg-note" className="mb-2 block text-row font-semibold text-ink-1">
+          Note
+        </label>
+        <textarea
+          id="seg-note"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          onBlur={() => void saveNote()}
+          placeholder="ex. mai sunt 5 m de săpătură în beton"
+          className="min-h-[90px] w-full rounded-btn border border-line-2 bg-paper-0 p-3 text-row text-ink-1 focus:border-accent"
+        />
+        <p className="mt-1 text-sub text-ink-3">Se salvează când ieși din câmp.</p>
+      </div>
     </Modal>
   )
 }

@@ -181,6 +181,12 @@ export async function deleteDay(id: string): Promise<void> {
   if (error) throw error
 }
 
+/** Nota unei porțiuni de pe traseu. */
+export async function updateSegmentNote(id: string, note: string | null): Promise<void> {
+  const { error } = await supabase.from('cvr_tracker_segments').update({ note }).eq('id', id)
+  if (error) throw error
+}
+
 // ── Lucrări separate ─────────────────────────────────────────────────────
 
 export async function updatePoint(id: string, patch: { status: Stare; note: string | null }): Promise<PointRow> {
