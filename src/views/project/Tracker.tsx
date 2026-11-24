@@ -25,10 +25,13 @@ import {
   azi,
   saveCheckpoint,
   setMark,
+  addSegNote,
+  deleteSegNote,
   updatePoint,
-  updateSegmentNote,
+  updateSegNote,
   useTracker,
   type PointRow,
+  type SegNote,
   type TrackerData,
 } from '../../data/tracker'
 import { color } from '../../design/tokens'
@@ -117,6 +120,7 @@ function Traseu({
   }, [])
 
   const pins = new Map(data.points.filter((p) => p.at_pt).map((p) => [p.at_pt!, p]))
+  const withNotes = new Set(data.notes.map((n) => n.segment_code))
   const typeColor = (k: string) => cfg.types.find((t) => t.id === k)?.color ?? color.ink4
   const rows = rowsFor(data.segments, W)
 
@@ -208,6 +212,11 @@ function Traseu({
                           </circle>
                         )
                       })}
+                    {withNotes.has(s.code) && sw > dw + 30 && (
+                      <text x={cx + dw / 2 + 5} y={Y + 24} fontSize={12} fill={color.ink3}>
+                        ✎<title>Are note</title>
+                      </text>
+                    )}
                   </g>
                 )
               })}
@@ -407,23 +416,6 @@ function SegmentPanel({
   const list = stagesFor(cfg, seg.kind)
   const type = cfg.types.find((t) => t.id === seg.kind)
   const [busy, setBusy] = useState<string | null>(null)
-  const [note, setNote] = useState(seg.note ?? '')
-  const [saved, setSaved] = useState(seg.note ?? '')
-
-  /** Nota porțiunii se salvează când ieși din câmp. */
-  async function saveNote() {
-    const v = note.trim()
-    if (v === saved.trim()) return
-    try {
-      await updateSegmentNote(seg.id, v || null)
-      setSaved(v)
-      onChanged({ ...data, segments: data.segments.map((x) => (x.id === seg.id ? { ...x, note: v || null } : x)) })
-      toast('Notă salvată', 'success')
-    } catch (e) {
-      toast(`Nu s-a salvat: ${e instanceof Error ? e.message : e}`)
-    }
-  }
-
   async function toggle(stage: string) {
     const on = !isDone(mm, seg.code, stage)
     const m = { segment_code: seg.code, stage, done_on: azi() }
@@ -468,21 +460,131 @@ function SegmentPanel({
         })}
       </ul>
       <LucrareAditionala data={data} seg={seg} onSaved={onChanged} />
-      <div className="mt-4 border-t border-line-1 pt-4">
-        <label htmlFor="seg-note" className="mb-2 block text-row font-semibold text-ink-1">
-          Note
-        </label>
-        <textarea
-          id="seg-note"
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          onBlur={() => void saveNote()}
-          placeholder="ex. mai sunt 5 m de săpătură în beton"
-          className="min-h-[90px] w-full rounded-btn border border-line-2 bg-paper-0 p-3 text-row text-ink-1 focus:border-accent"
-        />
-        <p className="mt-1 text-sub text-ink-3">Se salvează când ieși din câmp.</p>
-      </div>
+      <NoteSectiune data={data} seg={seg} onChanged={onChanged} />
     </Modal>
+  )
+}
+
+/** Notele unei porțiuni: listă cu dată, ca niște comentarii. Se pot modifica și șterge. */
+function NoteSectiune({
+  data,
+  seg,
+  onChanged,
+}: {
+  data: TrackerData
+  seg: Segment
+  onChanged: (d: TrackerData) => void
+}) {
+  const list = data.notes
+    .filter((n) => n.segment_code === seg.code)
+    .sort((a, b) => (a.note_date < b.note_date ? 1 : a.note_date > b.note_date ? -1 : 0))
+  const [body, setBody] = useState('')
+  const [date, setDate] = useState(azi())
+  const [edit, setEdit] = useState<SegNote | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  async function run(fn: () => Promise<void>) {
+    setBusy(true)
+    try {
+      await fn()
+    } catch (e) {
+      toast(`Nu s-a salvat: ${e instanceof Error ? e.message : e}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const add = () =>
+    run(async () => {
+      if (!body.trim()) return toast('Scrie nota.')
+      const n = await addSegNote(data.tracker.id, { segment_code: seg.code, note_date: date, body: body.trim() })
+      onChanged({ ...data, notes: [...data.notes, n] })
+      setBody('')
+    })
+
+  const saveEdit = () =>
+    run(async () => {
+      if (!edit) return
+      if (!edit.body.trim()) return toast('Nota nu poate fi goală. Șterge-o dacă nu mai e bună.')
+      const n = await updateSegNote(edit.id, { note_date: edit.note_date, body: edit.body.trim() })
+      onChanged({ ...data, notes: data.notes.map((x) => (x.id === n.id ? n : x)) })
+      setEdit(null)
+    })
+
+  const remove = (n: SegNote) =>
+    run(async () => {
+      if (!window.confirm(`Ștergi nota din ${dataRo(n.note_date)}?`)) return
+      await deleteSegNote(n.id)
+      onChanged({ ...data, notes: data.notes.filter((x) => x.id !== n.id) })
+    })
+
+  const area =
+    'min-h-[64px] w-full rounded-btn border border-line-2 bg-paper-0 p-3 text-row text-ink-1 focus:border-accent'
+  const dateCls = 'h-10 rounded-btn border border-line-2 bg-paper-0 px-3 text-row text-ink-1 focus:border-accent'
+  const link = 'text-sub font-semibold text-ink-3 hover:text-ink-1'
+
+  return (
+    <div className="mt-4 border-t border-line-1 pt-4">
+      <p className="mb-2 text-row font-semibold text-ink-1">Note</p>
+      <textarea
+        value={body}
+        onChange={(e) => setBody(e.target.value)}
+        placeholder="ex. mai sunt 5 m de săpătură în beton"
+        aria-label="Notă nouă"
+        className={area}
+      />
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} aria-label="Data notei" className={dateCls} />
+        <GhostButton onClick={() => void add()} disabled={busy}>
+          Adaugă nota
+        </GhostButton>
+      </div>
+      {list.length > 0 && (
+        <ul className="mt-3 divide-y divide-line-1">
+          {list.map((n) =>
+            edit?.id === n.id ? (
+              <li key={n.id} className="py-3">
+                <textarea
+                  value={edit.body}
+                  onChange={(e) => setEdit({ ...edit, body: e.target.value })}
+                  aria-label="Modifică nota"
+                  autoFocus
+                  className={area}
+                />
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <input
+                    type="date"
+                    value={edit.note_date}
+                    onChange={(e) => setEdit({ ...edit, note_date: e.target.value })}
+                    aria-label="Data notei"
+                    className={dateCls}
+                  />
+                  <PrimaryButton onClick={() => void saveEdit()} disabled={busy}>
+                    Salvează
+                  </PrimaryButton>
+                  <GhostButton onClick={() => setEdit(null)}>Renunță</GhostButton>
+                </div>
+              </li>
+            ) : (
+              <li key={n.id} className="py-2.5">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sub font-semibold text-ink-3">{dataRo(n.note_date)}</span>
+                  <span className="flex gap-3">
+                    <button onClick={() => setEdit(n)} className={link}>
+                      Modifică
+                    </button>
+                    <button onClick={() => void remove(n)} className={`${link} hover:!text-neg`}>
+                      Șterge
+                    </button>
+                  </span>
+                </div>
+                <p className="mt-0.5 whitespace-pre-wrap text-row text-ink-1">{n.body}</p>
+              </li>
+            )
+          )}
+        </ul>
+      )}
+    </div>
   )
 }
 

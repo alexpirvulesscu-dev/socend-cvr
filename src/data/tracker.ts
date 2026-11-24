@@ -42,6 +42,14 @@ export interface DayRow {
   note: string | null
 }
 
+/** O notă datată pe o porțiune a traseului. */
+export interface SegNote {
+  id: string
+  segment_code: string
+  note_date: string
+  body: string
+}
+
 export interface TrackerData {
   tracker: TrackerRow
   segments: (Segment & { id: string })[]
@@ -49,6 +57,7 @@ export interface TrackerData {
   marks: Mark[]
   checkpoints: CheckpointRow[]
   days: DayRow[]
+  notes: SegNote[]
 }
 
 /** Lista scurtă a trackerelor (fără date), ca pagina proiectului să știe dacă are tab. */
@@ -73,7 +82,7 @@ const DAY_COLS = 'id, work_date, qty, lines, note'
 const CP_COLS = 'id, stage, from_pt, at_pt, done_on, created_at'
 
 async function fetchTracker(id: string): Promise<TrackerData> {
-  const [t, s, p, m, c, d] = await Promise.all([
+  const [t, s, p, m, c, d, n] = await Promise.all([
     supabase.from('cvr_trackers').select('id, project_id, job_id, name, subtitle, config').eq('id', id).single(),
     supabase
       .from('cvr_tracker_segments')
@@ -88,8 +97,9 @@ async function fetchTracker(id: string): Promise<TrackerData> {
     supabase.from('cvr_tracker_marks').select('segment_code, stage, done_on').eq('tracker_id', id).limit(10000),
     supabase.from('cvr_tracker_checkpoints').select(CP_COLS).eq('tracker_id', id).order('created_at'),
     supabase.from('cvr_tracker_days').select(DAY_COLS).eq('tracker_id', id).order('work_date', { ascending: false }),
+    supabase.from('cvr_tracker_segment_notes').select('id, segment_code, note_date, body').eq('tracker_id', id).limit(10000),
   ])
-  for (const r of [t, s, p, m, c, d]) if (r.error) throw r.error
+  for (const r of [t, s, p, m, c, d, n]) if (r.error) throw r.error
   return {
     tracker: t.data as TrackerRow,
     segments: ((s.data ?? []) as (Segment & { id: string })[]).map((x) => ({ ...x, length_m: Number(x.length_m) })),
@@ -97,6 +107,7 @@ async function fetchTracker(id: string): Promise<TrackerData> {
     marks: (m.data ?? []) as Mark[],
     checkpoints: (c.data ?? []) as CheckpointRow[],
     days: (d.data ?? []) as DayRow[],
+    notes: (n.data ?? []) as SegNote[],
   }
 }
 
@@ -181,9 +192,36 @@ export async function deleteDay(id: string): Promise<void> {
   if (error) throw error
 }
 
-/** Nota unei porțiuni de pe traseu. */
-export async function updateSegmentNote(id: string, note: string | null): Promise<void> {
-  const { error } = await supabase.from('cvr_tracker_segments').update({ note }).eq('id', id)
+// ── Notele porțiunilor (0033) ────────────────────────────────────────────
+
+const NOTE_COLS = 'id, segment_code, note_date, body'
+
+export async function addSegNote(
+  trackerId: string,
+  n: { segment_code: string; note_date: string; body: string }
+): Promise<SegNote> {
+  const { data, error } = await supabase
+    .from('cvr_tracker_segment_notes')
+    .insert({ ...n, tracker_id: trackerId })
+    .select(NOTE_COLS)
+    .single()
+  if (error) throw error
+  return data as SegNote
+}
+
+export async function updateSegNote(id: string, patch: { note_date: string; body: string }): Promise<SegNote> {
+  const { data, error } = await supabase
+    .from('cvr_tracker_segment_notes')
+    .update(patch)
+    .eq('id', id)
+    .select(NOTE_COLS)
+    .single()
+  if (error) throw error
+  return data as SegNote
+}
+
+export async function deleteSegNote(id: string): Promise<void> {
+  const { error } = await supabase.from('cvr_tracker_segment_notes').delete().eq('id', id)
   if (error) throw error
 }
 
