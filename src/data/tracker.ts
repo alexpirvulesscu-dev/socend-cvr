@@ -120,7 +120,8 @@ export function useTracker(id: string) {
       setData(await fetchTracker(id))
       setError(null)
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      // erorile Supabase nu sunt Error, dar au `message`
+      setError(e instanceof Error ? e.message : ((e as { message?: string })?.message ?? String(e)))
     }
   }, [id])
 
