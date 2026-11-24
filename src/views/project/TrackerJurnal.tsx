@@ -1,6 +1,7 @@
 // Jurnalul zilnic: o singură foaie, grupată pe săptămâni.
 //  · coloanele sunt grupate pe tip de lucrare: Șanț · Console · Sudură · Lucrări adiționale
-//  · un rând pe zi; apeși pe zi și se deschide panoul lateral, unde schimbi cifrele
+//  · un rând pe zi; scrii direct în celule (se salvează când ieși din celulă)
+//    sau apeși pe dată și se deschide panoul lateral, cu aceleași cifre
 //  · coloana „Unde" se completează singură din bifele de pe traseu (aceeași zi)
 //    și din lucrările adiționale adăugate pe o porțiune
 import { Fragment, useState } from 'react'
@@ -32,6 +33,45 @@ const inputCls =
 const blueBtn =
   'rounded-full bg-info-fill px-3.5 py-1.5 text-sub font-semibold text-paper-0 transition-opacity duration-[120ms] ease-std hover:opacity-90 disabled:opacity-50'
 const labelCls = 'mb-1 block text-sub font-medium text-ink-3'
+
+const cellInput =
+  'h-9 w-full rounded-[8px] border border-transparent bg-transparent px-2 text-right text-row tabular-nums text-ink-1 hover:border-line-2 focus:border-accent focus:bg-paper-0'
+
+/** O celulă care se salvează la ieșire, doar dacă s-a schimbat ceva. */
+function Cell({
+  value,
+  onCommit,
+  align = 'right',
+  label,
+}: {
+  value: string
+  onCommit: (v: string) => void
+  align?: 'right' | 'left'
+  label: string
+}) {
+  const [v, setV] = useState(value)
+  const [prev, setPrev] = useState(value)
+  if (value !== prev) {
+    setPrev(value)
+    setV(value)
+  }
+  return (
+    <input
+      value={v}
+      aria-label={label}
+      inputMode={align === 'right' ? 'decimal' : undefined}
+      size={align === 'right' ? 5 : 28}
+      onChange={(e) => setV(e.target.value)}
+      onBlur={() => {
+        if (v !== value) onCommit(v)
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+      }}
+      className={`${cellInput} ${align === 'left' ? '!text-left' : ''}`}
+    />
+  )
+}
 
 function cleanQty(cols: DailyColumn[], q: Record<string, number>): Record<string, number> {
   const out: Record<string, number> = {}
@@ -343,6 +383,24 @@ export function JurnalZilnic({ data, setData }: { data: TrackerData; setData: (d
   const [panel, setPanel] = useState<{ date: string } | null>(null)
   const isWeekOpen = (start: string, i: number) => weekOpen[start] ?? i === 0
 
+  /** Scris direct în tabel: o cantitate sau observațiile zilei. */
+  async function commit(day: DayRow, patch: { col?: string; value?: string; note?: string }) {
+    const qty = { ...day.qty }
+    if (patch.col) qty[patch.col] = toNum(patch.value ?? '')
+    const note = patch.note !== undefined ? patch.note.trim() || null : day.note
+    try {
+      const row = await saveDay(data.tracker.id, {
+        work_date: day.work_date,
+        qty: cleanQty(cols, qty),
+        lines: day.lines ?? [],
+        note,
+      })
+      setData(withDay(data, row))
+    } catch (e) {
+      toast(`Nu s-a salvat: ${e instanceof Error ? e.message : e}`)
+    }
+  }
+
   function openDay(date: string) {
     setWeekOpen((w) => ({ ...w, [weekStart(date)]: true }))
     setPanel({ date })
@@ -358,7 +416,7 @@ export function JurnalZilnic({ data, setData }: { data: TrackerData; setData: (d
   return (
     <Card
       title="Jurnal zilnic"
-      subtitle="Un rând pe zi, grupat pe săptămâni. Apasă pe o zi pentru a schimba cifrele. Coloana „Unde” se completează singură din bifele de pe traseu."
+      subtitle="Un rând pe zi, grupat pe săptămâni. Scrie direct în celule sau apasă pe dată pentru a deschide ziua în panoul lateral. Coloana „Unde” se completează singură din bifele de pe traseu."
       className="!px-0"
     >
       <div className="mb-3 flex flex-wrap items-center gap-2 px-5">
@@ -449,26 +507,35 @@ export function JurnalZilnic({ data, setData }: { data: TrackerData; setData: (d
                     w.days.map((d) => {
                       const places = dayPlaces(cfg, data.segments, data.marks, d)
                       return (
-                        <tr
-                          key={d.id}
-                          tabIndex={0}
-                          role="button"
-                          aria-label={`Deschide ziua ${zz(d.work_date)}`}
-                          onClick={() => openDay(d.work_date)}
-                          onKeyDown={(e) => e.key === 'Enter' && openDay(d.work_date)}
-                          className="group cursor-pointer outline-none hover:bg-paper-1 focus-visible:bg-paper-1"
-                        >
-                          <td
-                            className={`${td} ${sticky} whitespace-nowrap bg-paper-0 py-2.5 pl-8 pr-3 text-row font-semibold text-ink-1 group-hover:bg-paper-1`}
-                          >
-                            <span className="inline-block w-6 text-ink-3">{ZI[dow(d.work_date)]}</span> {zz(d.work_date)}
+                        <tr key={d.id} className="group hover:bg-paper-1">
+                          <td className={`${td} ${sticky} whitespace-nowrap bg-paper-0 py-1.5 pl-8 pr-3 group-hover:bg-paper-1`}>
+                            <button
+                              onClick={() => openDay(d.work_date)}
+                              aria-label={`Deschide ziua ${zz(d.work_date)}`}
+                              title="Deschide ziua în panoul lateral"
+                              className="rounded-[8px] px-1.5 py-1 text-row font-semibold text-ink-1 hover:bg-segment"
+                            >
+                              <span className="inline-block w-6 text-left text-ink-3">{ZI[dow(d.work_date)]}</span> {zz(d.work_date)}
+                              <span aria-hidden className="ml-1.5 text-ink-4">›</span>
+                            </button>
                           </td>
                           {cols.map((c, i) => (
-                            <td key={c.id} className={`${numTd} ${edge(i)} text-ink-1`}>
-                              {fmt(d.qty[c.id])}
+                            <td key={c.id} className={`${td} ${edge(i)}`}>
+                              <Cell
+                                value={fmt(d.qty[c.id])}
+                                label={`${c.label}, ${zz(d.work_date)}`}
+                                onCommit={(v) => void commit(d, { col: c.id, value: v })}
+                              />
                             </td>
                           ))}
-                          <td className={`${td} max-w-[320px] border-l border-l-line-2 px-3 text-row text-ink-2`}>{d.note}</td>
+                          <td className={`${td} max-w-[320px] border-l border-l-line-2`}>
+                            <Cell
+                              value={d.note ?? ''}
+                              align="left"
+                              label={`Observații, ${zz(d.work_date)}`}
+                              onCommit={(v) => void commit(d, { note: v })}
+                            />
+                          </td>
                           <td className={`${td} max-w-[320px] border-l border-l-line-2 px-3 text-row text-ink-2`}>
                             {places.map((p) => (
                               <span key={p.label} className="block">
