@@ -401,6 +401,17 @@ export function JurnalZilnic({ data, setData }: { data: TrackerData; setData: (d
     }
   }
 
+  /** „Adaugă zi": pune un rând gol în tabel, pentru data aleasă (implicit azi). */
+  async function addDay() {
+    setWeekOpen((w) => ({ ...w, [weekStart(newDate)]: true }))
+    if (days.some((d) => d.work_date === newDate)) return toast(`Ziua ${zz(newDate)} există deja în jurnal.`)
+    try {
+      setData(withDay(data, await saveDay(data.tracker.id, { work_date: newDate, qty: {}, lines: [], note: null })))
+    } catch (e) {
+      toast(`Nu s-a salvat: ${e instanceof Error ? e.message : e}`)
+    }
+  }
+
   function openDay(date: string) {
     setWeekOpen((w) => ({ ...w, [weekStart(date)]: true }))
     setPanel({ date })
@@ -427,7 +438,7 @@ export function JurnalZilnic({ data, setData }: { data: TrackerData; setData: (d
           aria-label="Data zilei noi"
           className="h-10 rounded-btn border border-line-2 bg-paper-0 px-3 text-row text-ink-1 focus:border-accent"
         />
-        <PrimaryButton onClick={() => openDay(newDate)}>Adaugă zi</PrimaryButton>
+        <PrimaryButton onClick={() => void addDay()}>Adaugă zi</PrimaryButton>
       </div>
 
       <div className="overflow-x-auto">
