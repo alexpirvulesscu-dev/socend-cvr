@@ -224,3 +224,95 @@ export function segmentLabel(s: Segment): string {
   const base = `${s.from_pt}-${s.to_pt}`
   return s.parts > 1 ? `${base} (${s.part + 1}/${s.parts})` : base
 }
+
+// ── Jurnalul zilnic: locul lucrărilor ────────────────────────────────────
+// Jurnalul are un rând pe zi. Locul nu se scrie de mână: vine din bifele de pe
+// traseu (ziua în care o porțiune a fost bifată gata) și din lucrările
+// adiționale adăugate pe o porțiune.
+
+/** O lucrare adițională adăugată de pe o porțiune a traseului. */
+export interface DayLine {
+  id: string
+  from_pt: string | null
+  to_pt: string | null
+  qty: Record<string, number>
+  note: string | null
+}
+
+/** „VJ65-VJ72" pentru un șir de porțiuni lipite una de alta. */
+function runs(list: Segment[]): string[] {
+  const sorted = [...list].sort((a, b) => a.sort_order - b.sort_order)
+  const out: { from: string; to: string }[] = []
+  for (const s of sorted) {
+    const last = out[out.length - 1]
+    if (last && (last.to === s.from_pt || last.to === s.to_pt)) last.to = s.to_pt
+    else out.push({ from: s.from_pt, to: s.to_pt })
+  }
+  return out.map((r) => `${r.from}-${r.to}`)
+}
+
+/**
+ * Unde s-a lucrat într-o zi, câte un rând pe lucrare:
+ *  · lucrările de pe traseu: porțiunile bifate gata în ziua aceea, dacă jurnalul
+ *    are cantitate pe lucrarea respectivă în aceeași zi
+ *  · lucrările adiționale: porțiunea de pe care au fost adăugate
+ */
+export function dayPlaces(
+  cfg: TrackerConfig,
+  segments: Segment[],
+  marks: Mark[],
+  day: { work_date: string; qty: Record<string, number>; lines?: DayLine[] | null }
+): { label: string; where: string }[] {
+  const out: { label: string; where: string }[] = []
+  const cols = cfg.dailyColumns ?? []
+  const byCode = new Map(segments.map((s) => [s.code, s]))
+  for (const st of cfg.stages) {
+    // coloana lucrării: același nume, sau împărțită pe echipe (sudura → sudura_e1, sudura_e2)
+    const has = cols.some((c) => (c.id === st.id || c.id.startsWith(st.id + '_')) && Number(day.qty[c.id] ?? 0) > 0)
+    if (!has) continue
+    const segs = marks
+      .filter((m) => m.stage === st.id && m.done_on === day.work_date)
+      .map((m) => byCode.get(m.segment_code))
+      .filter((s): s is Segment => !!s)
+    if (segs.length) out.push({ label: st.label, where: runs(segs).join(', ') })
+  }
+  for (const c of cols) {
+    const places = (day.lines ?? []).filter((l) => Number(l.qty[c.id] ?? 0) > 0 && l.from_pt && l.to_pt)
+    if (places.length) out.push({ label: c.label, where: [...new Set(places.map((l) => `${l.from_pt}-${l.to_pt}`))].join(', ') })
+  }
+  return out
+}
+
+function addDays(iso: string, n: number): string {
+  const d = new Date(iso + 'T00:00:00Z')
+  d.setUTCDate(d.getUTCDate() + n)
+  return d.toISOString().slice(0, 10)
+}
+
+/** Lunea săptămânii în care cade ziua. */
+export function weekStart(iso: string): string {
+  const dow = new Date(iso + 'T00:00:00Z').getUTCDay()
+  return addDays(iso, -((dow + 6) % 7))
+}
+
+export interface Week<T> {
+  start: string
+  end: string
+  days: T[]
+}
+
+/** Zilele grupate pe săptămâni (luni-duminică), cele mai noi primele. */
+export function groupWeeks<T extends { work_date: string }>(days: T[]): Week<T>[] {
+  const map = new Map<string, T[]>()
+  for (const d of days) {
+    const k = weekStart(d.work_date)
+    map.set(k, [...(map.get(k) ?? []), d])
+  }
+  return [...map.entries()]
+    .sort((a, b) => (a[0] < b[0] ? 1 : -1))
+    .map(([start, list]) => ({
+      start,
+      end: addDays(start, 6),
+      days: list.sort((a, b) => (a.work_date < b.work_date ? 1 : -1)),
+    }))
+}

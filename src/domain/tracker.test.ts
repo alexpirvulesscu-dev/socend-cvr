@@ -99,3 +99,47 @@ describe('tracker: puncte de control', () => {
     })
   })
 })
+
+import { dayPlaces, groupWeeks, weekStart } from './tracker'
+
+describe('tracker: jurnalul zilnic', () => {
+  const jcfg: TrackerConfig = {
+    ...cfg,
+    dailyColumns: [
+      { id: 'sapat', label: 'Săpătură', unit: 'ml' },
+      { id: 'teava', label: 'Montaj țeavă', unit: 'ml' },
+      { id: 'piconare', label: 'Piconare stâncă/beton', unit: 'ml' },
+    ],
+  }
+  const marks = [
+    { segment_code: 's79', stage: 'sapat', done_on: '2026-11-24' },
+    { segment_code: 's78', stage: 'sapat', done_on: '2026-11-24' },
+    { segment_code: 's70', stage: 'sapat', done_on: '2026-11-24' },
+    { segment_code: 's77', stage: 'sapat', done_on: '2026-11-20' },
+    { segment_code: 's79', stage: 'teava', done_on: '2026-11-24' },
+  ]
+
+  it('locul vine din bifele zilei, doar pentru lucrările cu cantitate în jurnal', () => {
+    const day = { work_date: '2026-11-24', qty: { sapat: 10 }, lines: [] }
+    // țeava e bifată în aceeași zi, dar jurnalul nu are metri de țeavă → nu apare
+    expect(dayPlaces(jcfg, segs, marks, day)).toEqual([{ label: 'Săpătură', where: 'VJ70-VJ71, VJ78-VJ80' }])
+  })
+
+  it('lucrarea adițională arată porțiunea de pe care a fost adăugată', () => {
+    const day = {
+      work_date: '2026-11-24',
+      qty: { piconare: 6 },
+      lines: [{ id: 'a', from_pt: 'VJ41', to_pt: 'VJ42', qty: { piconare: 6 }, note: null }],
+    }
+    expect(dayPlaces(jcfg, segs, marks, day)).toEqual([{ label: 'Piconare stâncă/beton', where: 'VJ41-VJ42' }])
+  })
+
+  it('săptămâna începe lunea, iar săptămânile vin cele mai noi primele', () => {
+    expect(weekStart('2026-10-25')).toBe('2026-10-19') // duminică
+    expect(weekStart('2026-10-26')).toBe('2026-10-26') // luni
+    const w = groupWeeks([{ work_date: '2026-10-12' }, { work_date: '2026-10-27' }, { work_date: '2026-10-26' }])
+    expect(w.map((x) => x.start)).toEqual(['2026-10-26', '2026-10-12'])
+    expect(w[0].end).toBe('2026-11-01')
+    expect(w[0].days.map((d) => d.work_date)).toEqual(['2026-10-27', '2026-10-26'])
+  })
+})
