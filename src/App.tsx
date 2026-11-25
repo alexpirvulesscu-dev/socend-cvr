@@ -18,6 +18,7 @@ import { ConfigurareView } from './views/Configurare'
 import { StyleguideView } from './views/Styleguide'
 import { LoginView } from './views/Login'
 import { CronologicView } from './views/Cronologic'
+import { SugestiiView } from './views/Sugestii'
 import { Toasts } from './components/Toast'
 
 // Biroul are bară laterală (Dashboard · Proiecte · Program · Ce urmează ·
@@ -174,6 +175,7 @@ function OfficeApp({ email }: { email: string }) {
       {effScreen === 'santier' && <SantierView onDataChanged={refetch} />}
       {effScreen === 'gantt' && <GanttView projects={projects} patchEntity={patchEntity} />}
       {effScreen === 'urmeaza' && <LookaheadView projects={projects} onOpen={openInProject} />}
+      {effScreen === 'sugestii' && <SugestiiView />}
       {effScreen === 'styleguide' && <StyleguideView onBack={() => setScreen('dashboard')} />}
       {effScreen === 'config' && (
         <ConfigurareView
