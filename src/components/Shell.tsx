@@ -12,6 +12,7 @@ export type Nav =
   | 'urmeaza'
   | 'variatii'
   | 'santier'
+  | 'sugestii'
   | 'styleguide'
 
 const NAV_ITEMS: { key: Nav; label: string }[] = [
@@ -51,6 +52,28 @@ function NavList({ active, onNav }: { active: Nav; onNav: (n: Nav) => void }) {
         )
       })}
     </nav>
+  )
+}
+
+/** Becul din josul meniului: deschide ecranul „Sugestii", ca în aplicația HR. */
+function IdeasButton({ active, onNav }: { active: Nav; onNav: (n: Nav) => void }) {
+  const on = active === 'sugestii'
+  return (
+    <div className="px-3 pb-2">
+      <button
+        onClick={() => onNav('sugestii')}
+        aria-current={on ? 'page' : undefined}
+        className={`flex w-full items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-left text-nav transition-colors duration-[120ms] ease-std ${
+          on ? 'bg-accent-soft font-semibold text-accent-ink' : 'font-medium text-ink-2 hover:bg-paper-1'
+        }`}
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-[18px] w-[18px] shrink-0" aria-hidden>
+          <path d="M9 18h6M10 21h4" />
+          <path d="M12 3a6 6 0 0 0-3.6 10.8c.6.5 1 1.2 1.1 2l.1.7h4.8l.1-.7c.1-.8.5-1.5 1.1-2A6 6 0 0 0 12 3Z" />
+        </svg>
+        Sugestii
+      </button>
+    </div>
   )
 }
 
@@ -97,6 +120,7 @@ export function Sidebar({
           <img src="/logo-socend.png" alt="Socend Construct" className="h-9 w-auto" />
         </div>
         <NavList active={active} onNav={onNav} />
+        <IdeasButton active={active} onNav={onNav} />
         <UserChip email={email} />
       </aside>
 
@@ -125,6 +149,7 @@ export function Sidebar({
               <img src="/logo-socend.png" alt="Socend Construct" className="h-9 w-auto" />
             </div>
             <NavList active={active} onNav={onNav} />
+            <IdeasButton active={active} onNav={onNav} />
             <UserChip email={email} />
           </div>
         </div>
